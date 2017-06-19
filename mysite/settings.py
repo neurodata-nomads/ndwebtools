@@ -22,9 +22,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'p3x7$bhwh9njzd&jyb(&c)s!_5@7$$cg$5=%x#5=q!!st9$wt4'
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -35,7 +32,6 @@ ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
     'synaptogram.apps.SynaptogramConfig',
-    'polls.apps.PollsConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -126,6 +122,6 @@ STATIC_URL = '/static/'
 
 
 try:
-    from local_settings import *
+    from .local_settings import *
 except ImportError:
     pass
