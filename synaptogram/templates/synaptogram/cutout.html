@@ -1,0 +1,23 @@
+<h1>Set the cutout range</h1>
+
+<p>
+x_rng = [600, 612] <br>
+y_rng = [600, 612] <br>
+z_rng = [10,20] <br>
+<p>
+
+<form action="{% url 'synaptogram:cutout' coll exp %}" method="post">
+    {% csrf_token %}
+    <table>
+        {% for field in form %}
+            <tr>
+                <div class="fieldWrapper">
+                    {{ field.errors }}
+                    <td>{{ field.label_tag }}</td>
+                    <td>{{ field }}</td>
+                </div
+            </tr>
+        {% endfor %}
+    </table>
+    <input type="submit" value="Submit" />
+</form>

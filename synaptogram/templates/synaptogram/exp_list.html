@@ -1,0 +1,12 @@
+<h1>Experiment list</h1>
+
+
+<ul>
+{% for exp in experiments %}
+<li>
+    <a href="{% url 'synaptogram:cutout' coll exp %}">
+        {{ exp }}
+    </a>
+</li>
+{% endfor %}
+</ul>

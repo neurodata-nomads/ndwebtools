@@ -1,0 +1,7 @@
+<h1>Cut urls on each channel</h1>
+
+{% for ch,cu in channel_cut_list %}
+<ul>
+    <li>{{ch}}: <a href={{cu}}>{{cu}}</a></li>
+</ul>
+{% endfor %}

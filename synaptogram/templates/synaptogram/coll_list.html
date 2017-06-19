@@ -1,0 +1,11 @@
+<h1>Collection list</h1>
+
+<ul>
+{% for coll in collections %}
+<li>
+    <a href="{% url 'synaptogram:exp_list' coll %}">
+        {{ coll }}
+    </a>
+</li>
+{% endfor %}
+</ul>
