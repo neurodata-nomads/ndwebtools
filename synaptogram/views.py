@@ -129,6 +129,9 @@ def cutout(request,coll,exp):
             elif end_path == 'cut_urls':
                 return HttpResponseRedirect(reverse('synaptogram:cut_url_list', 
                     args=(coll,exp,x,y,z)))
+            elif end_path == 'ndviz':
+                return HttpResponseRedirect(reverse('synaptogram:ndviz_url_list', 
+                    args=(coll,exp,x,y,z)))
 
     # if a GET (or any other method) we'll create a blank form
     else:
@@ -148,12 +151,42 @@ def ret_cut_urls(base_url,coll,exp,x,y,z,channels):
 def cut_url_list(request,coll,exp,x,y,z):
     base_url, headers = get_boss_request(request,'')
     channels = request.session['channels']
-    cut_urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
+    urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
     
-    channel_cut_list = zip(channels, cut_urls)
+    channel_cut_list = zip(channels, urls)
 
     context = {'channel_cut_list': channel_cut_list}
     return render(request, 'synaptogram/cut_url_list.html',context)
+
+def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
+    #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
+    #unescaped by: http://www.utilities-online.info/urlencode/
+    #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
+    ndviz_urls=[]
+    channels_urls=[]
+    channels_z=[]
+    ndviz_base = 'https://viz-dev.boss.neurodata.io/'
+    for ch in channels:
+        z_rng = list(map(int,z.split(':')))
+        for z_val in range(z_rng[0],z_rng[1]):
+            ndviz_urls.append('https://viz-dev.boss.neurodata.io/#!{\'layers\':{\'' + ch + 
+            '\':{\'type\':\'image\'_\'source\':\'boss://https://api.boss.neurodata.io/'
+            + coll +'/'+ exp + '/' + ch + 
+            '?window=0,10000\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
+            + x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
+            + ']}}_\'zoomFactor\':20}}')
+            channels_urls.append(ch)
+            channels_z.append(str(z_val))
+    return ndviz_urls, channels_urls, channels_z
+
+def ndviz_url_list(request,coll,exp,x,y,z):
+    base_url, headers = get_boss_request(request,'')
+    channels = request.session['channels']
+    urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,x,y,z,channels)
+
+    channel_ndviz_list = zip(channels_urls, channels_z, urls)
+    context = {'channel_ndviz_list': channel_ndviz_list}
+    return render(request, 'synaptogram/ndviz_url_list.html',context)
 
 def sgram(request,coll,exp,x,y,z):
     base_url, headers = get_boss_request(request,'')

@@ -1,0 +1,7 @@
+<h1>Neurodata Viz urls on each channel</h1>
+
+{% for ch,z,cu in channel_ndviz_list %}
+<ul>
+    <li>{{ch}}, z: <a href={{cu}}>{{z}}</a></li>
+</ul>
+{% endfor %}

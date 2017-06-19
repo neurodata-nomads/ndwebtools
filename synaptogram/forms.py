@@ -46,6 +46,7 @@ class CutoutForm(forms.Form):
 
     ENDPOINTS = (
         ('sgram','Synaptogram'),
+        ('ndviz','Neurodata Viz links per channel'),
         ('cut_urls','Cut URLS per channel'),
         )
     endpoint = forms.ChoiceField(label='Return:',choices=ENDPOINTS, 
