@@ -20,6 +20,8 @@ from matplotlib.figure import Figure
 
 import blosc
 
+import re
+
 from django.conf import settings
 
 # Create your views here.
@@ -120,18 +122,22 @@ def cutout(request,coll,exp):
             y = str(form.cleaned_data['y_min']) + ':' + str(form.cleaned_data['y_max'])
             z = str(form.cleaned_data['z_min']) + ':' + str(form.cleaned_data['z_max'])
 
-            request.session['channels'] = form.cleaned_data['channels']
+            channels = form.cleaned_data['channels']
+            
+            pass_params_d = {'coll': coll, 'exp': exp,'x': x,'y': y,'z': z, 'channels': channels}
+            pass_params = '&'.join(['%s=%s' % (key, value) for (key, value) in pass_params_d.items()])
+            params = '?' + pass_params
+
             # redirect to a new URL:
             end_path = form.cleaned_data['endpoint']
             if end_path == 'sgram':
-                return HttpResponseRedirect(reverse('synaptogram:sgram', 
-                    args=(coll,exp,x,y,z)))
+                return HttpResponseRedirect(reverse('synaptogram:sgram') + params)
             elif end_path == 'cut_urls':
-                return HttpResponseRedirect(reverse('synaptogram:cut_url_list', 
-                    args=(coll,exp,x,y,z)))
+                return HttpResponseRedirect(reverse('synaptogram:cut_url_list') + params)
             elif end_path == 'ndviz':
-                return HttpResponseRedirect(reverse('synaptogram:ndviz_url_list', 
-                    args=(coll,exp,x,y,z)))
+                return HttpResponseRedirect(reverse('synaptogram:ndviz_url_list') + params)
+            elif end_path == 'tiff_stack':
+                return HttpResponseRedirect(reverse('synaptogram:tiff_stack') + params)
 
     # if a GET (or any other method) we'll create a blank form
     else:
@@ -148,9 +154,10 @@ def ret_cut_urls(base_url,coll,exp,x,y,z,channels):
         cut_urls.append(base_url + JJ + '/' + window)
     return cut_urls
 
-def cut_url_list(request,coll,exp,x,y,z):
+def cut_url_list(request):
+    coll,exp,x,y,z,channels = return_querydict(request)
+    
     base_url, headers = get_boss_request(request,'')
-    channels = request.session['channels']
     urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
     
     channel_cut_list = zip(channels, urls)
@@ -166,6 +173,7 @@ def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
     channels_urls=[]
     channels_z=[]
     ndviz_base = 'https://viz-dev.boss.neurodata.io/'
+    
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
         for z_val in range(z_rng[0],z_rng[1]):
@@ -179,18 +187,72 @@ def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
             channels_z.append(str(z_val))
     return ndviz_urls, channels_urls, channels_z
 
-def ndviz_url_list(request,coll,exp,x,y,z):
+def return_querydict(request):
+    q = request.GET
+    
+    coll = q.get('coll')
+    exp = q.get('exp')
+    x = q.get('x')
+    y = q.get('y')
+    z = q.get('z')
+    channels = q.get('channels')
+    
+    channels = channels.split(',')
+    bad_chars = "\'\[\] "
+    translation_table = dict.fromkeys(map(ord, bad_chars), None)
+    channels = [ch.translate(translation_table) for ch in channels]
+    
+    return coll,exp,x,y,z,channels
+
+def ndviz_url_list(request):
+    coll,exp,x,y,z,channels = return_querydict(request)
     base_url, headers = get_boss_request(request,'')
-    channels = request.session['channels']
     urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,x,y,z,channels)
 
     channel_ndviz_list = zip(channels_urls, channels_z, urls)
     context = {'channel_ndviz_list': channel_ndviz_list}
     return render(request, 'synaptogram/ndviz_url_list.html',context)
 
-def sgram(request,coll,exp,x,y,z):
+def tiff_stack(request):
+    coll,exp,x,y,z,channels = return_querydict(request)
     base_url, headers = get_boss_request(request,'')
-    channels = request.session['channels']
+
+    urls=[]
+    for ch in channels:
+        #create links to go to a method that will download the TIFF images inside each channel
+        urls.append(reverse('synaptogram:tiff_stack_channel',args=(coll,exp,x,y,z,ch) ))
+
+        #or package the images and create links for the images
+        # tiff_stack_channel(request,coll,exp,x,y,z,ch)
+    
+    return render(request, 'synaptogram/tiff_url_list.html',{'urls': urls})
+
+def tiff_stack_channel(request,coll,exp,x,y,z,channel):
+    base_url, headers = get_boss_request(request,'')
+    cu = ret_cut_urls(base_url,coll,exp,x,y,z,[channel])[0]
+    
+    x_rng = list(map(int,x.split(':')))
+    y_rng = list(map(int,y.split(':')))
+    z_rng = list(map(int,z.split(':')))
+
+    headers_blosc = headers
+    headers_blosc['Content-Type']='application/blosc-python'
+
+    r_blosc=requests.get(cu,headers = headers_blosc)
+    raw_data = blosc.decompress(r_blosc.content)
+    data_mat = np.fromstring(raw_data, dtype='uint16')
+    #if this is a time series, you need to reshape it differently
+    data_mat_reshape = np.reshape(data_mat,
+                                (z_rng[1] - z_rng[0],
+                                y_rng[1] - y_rng[0],
+                                x_rng[1] - x_rng[0]),
+                                order='C')
+    return data_mat_reshape
+
+def sgram(request):
+    coll,exp,x,y,z,channels = return_querydict(request)
+
+    base_url, headers = get_boss_request(request,'')
     cut_urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
     
     x_rng = list(map(int,x.split(':')))
