@@ -18,6 +18,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+import png
+#from PIL import Image
+
 import blosc
 
 import re
@@ -104,12 +107,16 @@ def exp_list(request,coll):
     context = {'coll': coll, 'experiments': experiments}
     return render(request, 'synaptogram/exp_list.html',context)
 
-def cutout(request,coll,exp):
+def get_all_channels(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
     url, headers = get_boss_request(request,add_url)
     r = requests.get(url, headers = headers)
     response = r.json()
     channels = tuple(response['channels'])
+    return channels
+
+def cutout(request,coll,exp):
+    channels = get_all_channels(request,coll,exp)
     
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
@@ -190,8 +197,12 @@ def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
 def return_querydict(request):
     q = request.GET
     
+    #validation / data sanitization needed here because it's not being done in the form
+    # x_rng_str = q.get('x')
+
     coll = q.get('coll')
     exp = q.get('exp')
+    
     x = q.get('x')
     y = q.get('y')
     z = q.get('z')
@@ -227,13 +238,17 @@ def tiff_stack(request):
     
     return render(request, 'synaptogram/tiff_url_list.html',{'urls': urls})
 
-def tiff_stack_channel(request,coll,exp,x,y,z,channel):
-    base_url, headers = get_boss_request(request,'')
-    cu = ret_cut_urls(base_url,coll,exp,x,y,z,[channel])[0]
-    
+def create_voxel_rng(x,y,z):
     x_rng = list(map(int,x.split(':')))
     y_rng = list(map(int,y.split(':')))
     z_rng = list(map(int,z.split(':')))
+    return x_rng,y_rng,z_rng
+
+def tiff_stack_channel(request,coll,exp,x,y,z,channel):
+    base_url, headers = get_boss_request(request,'')
+    cu = ret_cut_urls(base_url,coll,exp,x,y,z,[channel])[0]
+
+    x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
 
     headers_blosc = headers
     headers_blosc['Content-Type']='application/blosc-python'
@@ -242,22 +257,30 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     raw_data = blosc.decompress(r_blosc.content)
     data_mat = np.fromstring(raw_data, dtype='uint16')
     #if this is a time series, you need to reshape it differently
-    data_mat_reshape = np.reshape(data_mat,
+    z = np.reshape(data_mat,
                                 (z_rng[1] - z_rng[0],
                                 y_rng[1] - y_rng[0],
                                 x_rng[1] - x_rng[0]),
                                 order='C')
-    return data_mat_reshape
+    
+    response=HttpResponse(content_type='image/png')
+    
+    writer = png.Writer(width=z.shape[2], height=z.shape[1], bitdepth=16, greyscale=True)
+    writer.write(response,z[0,:,:])
+    
+    #img = Image.fromarray(data_mat_reshape[0,:,:])
+    #img.save(response, "PNG")
+    return response
 
 def sgram(request):
     coll,exp,x,y,z,channels = return_querydict(request)
+    return plot_sgram(request,coll,exp,x,y,z,channels)
 
+def plot_sgram(request,coll,exp,x,y,z,channels):
     base_url, headers = get_boss_request(request,'')
     cut_urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
     
-    x_rng = list(map(int,x.split(':')))
-    y_rng = list(map(int,y.split(':')))
-    z_rng = list(map(int,z.split(':')))
+    x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
 
     num_ch = len(channels)
     num_z = z_rng[1] - z_rng[0]
@@ -309,3 +332,34 @@ def sgram(request):
     response=HttpResponse(content_type='image/png')
     canvas.print_png(response)
     return response
+
+def parse_ndviz_url(url):
+    #example URL:
+    #"https://viz-dev.boss.neurodata.io/#!{'layers':{'CR1_2ndA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/CR1_2ndA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[657.4783325195312_1069.4876708984375_11]}}_'zoomFactor':69.80685914923684}}"
+    split_url = url.split('/')
+    coll = split_url[8]
+    exp = split_url[9]
+    params = split_url[10]
+
+    #incorporate the zoom factor when generating synaptogram from bookmarklet
+    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=}})",params)
+    zoom = int(float(match_zoom.group()))
+
+    # import pdb; pdb.set_trace()
+
+    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",params)
+    xyz = match_xyz.group()
+    xyz_float = xyz.split('_')
+    xyz_int = [int(float(p)) for p in xyz_float]
+
+    #creates the string param that using now - these will be integer lists at some point
+    x,y,z = [(str(p-5) + ':' + str(p+5)) for p in xyz_int]
+
+    return coll,exp,x,y,z
+
+def sgram_from_ndviz(request):
+    url = request.GET.get('url')
+    coll,exp,x,y,z = parse_ndviz_url(url)
+    #get all the channels
+    channels = get_all_channels(request,coll,exp)
+    return plot_sgram(request,coll,exp,x,y,z,channels)

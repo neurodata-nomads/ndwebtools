@@ -17,4 +17,5 @@ urlpatterns = [
     url(r'^tiff_stack/$',views.tiff_stack, name='tiff_stack'),
     url(r'^tiff_stack_channel/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<x>[-\w:]+)/(?P<y>[-\w:]+)/(?P<z>[-\w:]+)/(?P<channel>[-\w:]+)/$', 
             views.tiff_stack_channel, name='tiff_stack_channel'),
+    url(r'^sgram_from_ndviz/$', views.sgram_from_ndviz, name='sgram_from_ndviz'),
 ]

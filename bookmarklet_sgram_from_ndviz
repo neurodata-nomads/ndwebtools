@@ -1,0 +1,1 @@
+javascript:(function(){window.open("http://localhost:8000/synaptogram/sgram_from_ndviz?url="+encodeURIComponent(location.href))})();
