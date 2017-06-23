@@ -131,7 +131,7 @@ def cutout(request,coll,exp):
 
             channels = form.cleaned_data['channels']
             
-            pass_params_d = {'coll': coll, 'exp': exp,'x': x,'y': y,'z': z, 'channels': channels}
+            pass_params_d = {'coll': coll, 'exp': exp,'x': x,'y': y,'z': z, 'channels': ','.join(channels)}
             pass_params = '&'.join(['%s=%s' % (key, value) for (key, value) in pass_params_d.items()])
             params = '?' + pass_params
 
@@ -162,7 +162,7 @@ def ret_cut_urls(base_url,coll,exp,x,y,z,channels):
     return cut_urls
 
 def cut_url_list(request):
-    coll,exp,x,y,z,channels = return_querydict(request)
+    coll,exp,x,y,z,channels = process_params(request)
     
     base_url, headers = get_boss_request(request,'')
     urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
@@ -194,7 +194,16 @@ def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
             channels_z.append(str(z_val))
     return ndviz_urls, channels_urls, channels_z
 
-def return_querydict(request):
+def error_check_int_param(vals):
+    split_val=vals.split(':')
+    try:
+        val_chk_list = [str(int(a)) for a in split_val]
+        vals_chk = ':'.join(val_chk_list)
+        return vals_chk
+    except Exception as e:
+        print(e)
+
+def process_params(request):
     q = request.GET
     
     #validation / data sanitization needed here because it's not being done in the form
@@ -203,20 +212,16 @@ def return_querydict(request):
     coll = q.get('coll')
     exp = q.get('exp')
     
-    x = q.get('x')
-    y = q.get('y')
-    z = q.get('z')
+    x = error_check_int_param(q.get('x'))
+    y = error_check_int_param(q.get('y'))
+    z = error_check_int_param(q.get('z'))
     channels = q.get('channels')
-    
     channels = channels.split(',')
-    bad_chars = "\'\[\] "
-    translation_table = dict.fromkeys(map(ord, bad_chars), None)
-    channels = [ch.translate(translation_table) for ch in channels]
     
     return coll,exp,x,y,z,channels
 
 def ndviz_url_list(request):
-    coll,exp,x,y,z,channels = return_querydict(request)
+    coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
     urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,x,y,z,channels)
 
@@ -225,7 +230,7 @@ def ndviz_url_list(request):
     return render(request, 'synaptogram/ndviz_url_list.html',context)
 
 def tiff_stack(request):
-    coll,exp,x,y,z,channels = return_querydict(request)
+    coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
 
     urls=[]
@@ -273,7 +278,7 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     return response
 
 def sgram(request):
-    coll,exp,x,y,z,channels = return_querydict(request)
+    coll,exp,x,y,z,channels = process_params(request)
     return plot_sgram(request,coll,exp,x,y,z,channels)
 
 def plot_sgram(request,coll,exp,x,y,z,channels):
