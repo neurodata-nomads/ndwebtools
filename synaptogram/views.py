@@ -32,7 +32,10 @@ from django.conf import settings
 # Create your views here.
 
 def index(request):
-    return render(request, 'synaptogram/index.html',context=None)
+    if 'api_key' in request.session:
+        return redirect('synaptogram:coll_list')
+    else:
+        return redirect('synaptogram:login')
 
 def login(request):
     #users = User.all
@@ -49,6 +52,7 @@ def login(request):
             user = User.objects.get(name=username)
 
             request.session['api_key']=user.api_key
+            request.session['username']=username
             
             # redirect to a new URL:
             return HttpResponseRedirect('coll_list')
@@ -57,7 +61,7 @@ def login(request):
     else:
         form = LoginForm()
 
-    return render(request, 'synaptogram/login.html', {'form': form})
+    return render(request, 'synaptogram/index.html', {'form': form})
 
 def sign_up(request):
     # if this is a POST request we need to process the form data
@@ -82,6 +86,10 @@ def sign_up(request):
 
     return render(request, 'synaptogram/sign_up.html', {'form': form})
 
+def logout(request):
+    request.session.flush()
+    return redirect('synaptogram:index')
+
 def get_boss_request(request,add_url):
     api_key = request.session['api_key']
     boss_url = 'https://api.boss.neurodata.io/v1/'
@@ -95,8 +103,8 @@ def coll_list(request):
     r = requests.get(url, headers = headers)
     response = r.json()
     collections = response['collections']
-
-    context = {'collections': collections}
+    username = request.session['username']
+    context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html',context)
 
 def exp_list(request,coll):
@@ -106,7 +114,8 @@ def exp_list(request,coll):
     response = r.json()
     experiments = response['experiments']
 
-    context = {'coll': coll, 'experiments': experiments}
+    username = request.session['username']
+    context = {'coll': coll, 'experiments': experiments, 'username': username}
     return render(request, 'synaptogram/exp_list.html',context)
 
 def get_all_channels(request,coll,exp):
@@ -151,7 +160,8 @@ def cutout(request,coll,exp):
     # if a GET (or any other method) we'll create a blank form
     else:
         form = CutoutForm(channels = channels)
-    context = {'form': form, 'coll': coll, 'exp': exp}
+    username = request.session['username']
+    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username}
     return render(request, 'synaptogram/cutout.html', context)
 
 def ret_cut_urls(base_url,coll,exp,x,y,z,channels):

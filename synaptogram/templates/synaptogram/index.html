@@ -1,5 +1,11 @@
 <h1>Welcome to the Boss Cutout web service</h1>
 
-<p><a href="{% url 'synaptogram:login' %}">Log in</a> | 
+<h2>Login</h2>
 
-<a href="{% url 'synaptogram:sign_up' %}">Sign up</a></p>
+<form action="{% url 'synaptogram:login' %}" method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit" value="Submit" />
+</form>
+
+<p><a href="{% url 'synaptogram:sign_up' %}">Sign up</a>
