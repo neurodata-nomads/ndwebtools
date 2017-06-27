@@ -19,6 +19,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 import tifffile as tiff
+import zipfile
+import os
 
 #import png
 #from PIL import Image
@@ -251,10 +253,11 @@ def tiff_stack(request):
         #create links to go to a method that will download the TIFF images inside each channel
         urls.append(reverse('synaptogram:tiff_stack_channel',args=(coll,exp,x,y,z,ch) ))
 
-        #or package the images and create links for the images
-        # tiff_stack_channel(request,coll,exp,x,y,z,ch)
-    
-    return render(request, 'synaptogram/tiff_url_list.html',{'urls': urls})
+    #or package the images and create links for the images
+    channels_arg = ','.join(channels)
+
+    return render(request, 'synaptogram/tiff_url_list.html',{'urls': urls, 
+        'coll':coll, 'exp':exp, 'x':x, 'y':y, 'z':z, 'channels':channels_arg})
 
 def create_voxel_rng(x,y,z):
     x_rng = list(map(int,x.split(':')))
@@ -262,7 +265,30 @@ def create_voxel_rng(x,y,z):
     z_rng = list(map(int,z.split(':')))
     return x_rng,y_rng,z_rng
 
-def tiff_stack_channel(request,coll,exp,x,y,z,channel):
+def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
+    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z))).replace(':','_') + '.zip'
+    
+    channels = channels.split(',')
+
+    try:
+        os.remove(fname)
+    except OSError:
+        pass
+
+    with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
+        for ch in channels:
+            fn = create_tiff_stack(request,coll,exp,x,y,z,ch)
+            myzip.write(fn)
+
+    # zipfile.ZipFile(file, mode='x', compression=ZIP_LZMA, allowZip64=True)
+
+    serve_data = open(fname, "rb").read()
+    response=HttpResponse(serve_data, content_type="image/zip")
+    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
+    return response
+
+
+def create_tiff_stack(request,coll,exp,x,y,z,channel):
     base_url, headers = get_boss_request(request,'')
     cu = ret_cut_urls(base_url,coll,exp,x,y,z,[channel])[0]
 
@@ -286,10 +312,10 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     
     image = tiff.imread(fname)
     np.testing.assert_array_equal(image, img_data)
-    
-    # response=HttpResponse(content_type='image/tiff')
-    # response['Content-Disposition'] = 'attachment; filename="' + fname + '"'
 
+    return fname
+
+def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     serve_data = open(fname, "rb").read()
     response=HttpResponse(serve_data, content_type="image/tiff")
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
