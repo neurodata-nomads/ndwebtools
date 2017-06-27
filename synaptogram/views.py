@@ -18,7 +18,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-import png
+import tifffile as tiff
+
+#import png
 #from PIL import Image
 
 import blosc
@@ -180,12 +182,13 @@ def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
     channels_urls=[]
     channels_z=[]
     ndviz_base = 'https://viz-dev.boss.neurodata.io/'
+    boss_url = 'https://api.boss.neurodata.io/'
     
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
         for z_val in range(z_rng[0],z_rng[1]):
-            ndviz_urls.append('https://viz-dev.boss.neurodata.io/#!{\'layers\':{\'' + ch + 
-            '\':{\'type\':\'image\'_\'source\':\'boss://https://api.boss.neurodata.io/'
+            ndviz_urls.append(ndviz_base + '#!{\'layers\':{\'' + ch + 
+            '\':{\'type\':\'image\'_\'source\':\'boss://' + boss_url
             + coll +'/'+ exp + '/' + ch + 
             '?window=0,10000\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
             + x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
@@ -262,19 +265,24 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     raw_data = blosc.decompress(r_blosc.content)
     data_mat = np.fromstring(raw_data, dtype='uint16')
     #if this is a time series, you need to reshape it differently
-    z = np.reshape(data_mat,
+    img_data = np.reshape(data_mat,
                                 (z_rng[1] - z_rng[0],
                                 y_rng[1] - y_rng[0],
                                 x_rng[1] - x_rng[0]),
                                 order='C')
+        
+    fname = '_'.join(('media/',coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
+    tiff.imsave(fname, img_data)
     
-    response=HttpResponse(content_type='image/png')
+    image = tiff.imread(fname)
+    np.testing.assert_array_equal(image, img_data)
     
-    writer = png.Writer(width=z.shape[2], height=z.shape[1], bitdepth=16, greyscale=True)
-    writer.write(response,z[0,:,:])
-    
-    #img = Image.fromarray(data_mat_reshape[0,:,:])
-    #img.save(response, "PNG")
+    # response=HttpResponse(content_type='image/tiff')
+    # response['Content-Disposition'] = 'attachment; filename="' + fname + '"'
+
+    serve_data = open(fname, "rb").read()
+    response=HttpResponse(serve_data, content_type="image/tiff")
+    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/_') + '"'
     return response
 
 def sgram(request):
