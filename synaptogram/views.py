@@ -271,7 +271,7 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
                                 x_rng[1] - x_rng[0]),
                                 order='C')
         
-    fname = '_'.join(('media/',coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
+    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
     tiff.imsave(fname, img_data)
     
     image = tiff.imread(fname)
@@ -282,7 +282,7 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
 
     serve_data = open(fname, "rb").read()
     response=HttpResponse(serve_data, content_type="image/tiff")
-    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/_') + '"'
+    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
     return response
 
 def sgram(request):
