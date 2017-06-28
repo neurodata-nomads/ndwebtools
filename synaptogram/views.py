@@ -34,7 +34,7 @@ from django.conf import settings
 # Create your views here.
 
 def index(request):
-    if 'api_key' in request.session:
+    if 'username' in request.session:
         return redirect('synaptogram:coll_list')
     else:
         return redirect('synaptogram:login')
@@ -166,12 +166,16 @@ def cutout(request,coll,exp):
     context = {'form': form, 'coll': coll, 'exp': exp, 'username': username}
     return render(request, 'synaptogram/cutout.html', context)
 
-def ret_cut_urls(base_url,coll,exp,x,y,z,channels):
+def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
     res=0
     cut_urls=[]
     for ch in channels:
         JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
-        window='?window=0,10000'
+        dtype = get_ch_dtype(request,coll,exp,ch)
+        if dtype is 'uint16':
+            window='?window=0,10000'
+        else:
+            window=''
         cut_urls.append(base_url + JJ + '/' + window)
     return cut_urls
 
@@ -179,7 +183,7 @@ def cut_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     
     base_url, headers = get_boss_request(request,'')
-    urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
+    urls = ret_cut_urls(request,base_url,coll,exp,x,y,z,channels)
     
     channel_cut_list = zip(channels, urls)
 
@@ -290,16 +294,14 @@ def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
 
 def create_tiff_stack(request,coll,exp,x,y,z,channel):
     base_url, headers = get_boss_request(request,'')
-    cu = ret_cut_urls(base_url,coll,exp,x,y,z,[channel])[0]
+    cu = ret_cut_urls(request,base_url,coll,exp,x,y,z,[channel])[0]
 
     x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
 
     headers_blosc = headers
     headers_blosc['Content-Type']='application/blosc-python'
 
-    r_blosc=requests.get(cu,headers = headers_blosc)
-    raw_data = blosc.decompress(r_blosc.content)
-    data_mat = np.fromstring(raw_data, dtype='uint16')
+    data_mat = get_chan_img_data(request,cu,headers_blosc,coll,exp,channel)
     #if this is a time series, you need to reshape it differently
     img_data = np.reshape(data_mat,
                                 (z_rng[1] - z_rng[0],
@@ -316,6 +318,7 @@ def create_tiff_stack(request,coll,exp,x,y,z,channel):
     return fname
 
 def tiff_stack_channel(request,coll,exp,x,y,z,channel):
+    fname = create_tiff_stack(request,coll,exp,x,y,z,channel)
     serve_data = open(fname, "rb").read()
     response=HttpResponse(serve_data, content_type="image/tiff")
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
@@ -325,9 +328,24 @@ def sgram(request):
     coll,exp,x,y,z,channels = process_params(request)
     return plot_sgram(request,coll,exp,x,y,z,channels)
 
+def get_ch_dtype(request,coll,exp,ch):
+    add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
+    url, headers = get_boss_request(request,add_url)
+    r = requests.get(url, headers = headers)
+    response = r.json()
+    return response['datatype']
+
+def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
+    r_blosc=requests.get(cut_url,headers = headers_blosc)
+    raw_data = blosc.decompress(r_blosc.content)
+
+    dtype = get_ch_dtype(request,coll,exp,channel)
+
+    return np.fromstring(raw_data, dtype=dtype)
+
 def plot_sgram(request,coll,exp,x,y,z,channels):
     base_url, headers = get_boss_request(request,'')
-    cut_urls = ret_cut_urls(base_url,coll,exp,x,y,z,channels)
+    cut_urls = ret_cut_urls(request,base_url,coll,exp,x,y,z,channels)
     
     x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
 
@@ -340,9 +358,7 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
     fig=Figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
     #fig=plt.figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
     for ch_idx,cu in enumerate(cut_urls): #, exception_handler=exception_handler
-        r_blosc=requests.get(cu,headers = headers_blosc)
-        raw_data = blosc.decompress(r_blosc.content)
-        data_mat = np.fromstring(raw_data, dtype='uint16')
+        data_mat = get_chan_img_data(request,cu,headers_blosc,coll,exp,channels[ch_idx])
         #if this is a time series, you need to reshape it differently
         data_mat_reshape = np.reshape(data_mat,
                                     (z_rng[1] - z_rng[0],
