@@ -1,1 +1,0 @@
-javascript:(function(){window.open("http://ben-dev.neurodata.io:8080/synaptogram/sgram_from_ndviz?url="+encodeURIComponent(location.href))})();
