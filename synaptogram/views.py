@@ -163,9 +163,8 @@ def cutout(request,coll,exp):
     # if a GET (or any other method) we'll create a blank form
     else:
         q = request.GET
-        q.get('x')
-        x,y,z = xyz_from_params(q)
-        if x is not '':
+        x_param = q.get('x')
+        if x_param is not None:
             x,y,z = xyz_from_params(q)
             x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
             form = CutoutForm(channels=channels, 
