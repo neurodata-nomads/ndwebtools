@@ -134,6 +134,7 @@ def cutout(request,coll,exp):
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
         # create a form instance and populate it with data from the request:
+
         form = CutoutForm(request.POST, channels=channels)
         # check whether it's valid:
         if form.is_valid():
@@ -161,9 +162,23 @@ def cutout(request,coll,exp):
 
     # if a GET (or any other method) we'll create a blank form
     else:
-        form = CutoutForm(channels = channels)
+        q = request.GET
+        q.get('x')
+        x,y,z = xyz_from_params(q)
+        if x is not '':
+            x,y,z = xyz_from_params(q)
+            x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
+            form = CutoutForm(channels=channels, 
+                initial={'x_min':str(x_rng[0]),'y_min':str(y_rng[0]),'z_min':str(z_rng[0]),
+                'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])})
+        else:
+            form = CutoutForm(channels = channels)
     username = request.session['username']
-    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username}
+    base_url, headers = get_boss_request(request,'')
+    ch=channels[0]
+    #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
+    ndviz_url = ret_ndviz_urls(base_url,coll,exp,[ch])[0][0]
+    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url}
     return render(request, 'synaptogram/cutout.html', context)
 
 def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
@@ -190,7 +205,7 @@ def cut_url_list(request):
     context = {'channel_cut_list': channel_cut_list}
     return render(request, 'synaptogram/cut_url_list.html',context)
 
-def ret_ndviz_urls(base_url,coll,exp,x,y,z,channels):
+def ret_ndviz_urls(base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
@@ -222,6 +237,12 @@ def error_check_int_param(vals):
     except Exception as e:
         print(e)
 
+def xyz_from_params(q):
+    x = error_check_int_param(q.get('x'))
+    y = error_check_int_param(q.get('y'))
+    z = error_check_int_param(q.get('z'))
+    return x,y,z
+
 def process_params(request):
     q = request.GET
     
@@ -230,19 +251,17 @@ def process_params(request):
 
     coll = q.get('coll')
     exp = q.get('exp')
-    
-    x = error_check_int_param(q.get('x'))
-    y = error_check_int_param(q.get('y'))
-    z = error_check_int_param(q.get('z'))
     channels = q.get('channels')
     channels = channels.split(',')
     
+    x,y,z = xyz_from_params(q)
+
     return coll,exp,x,y,z,channels
 
 def ndviz_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
-    urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,x,y,z,channels)
+    urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,channels,x,y,z)
 
     channel_ndviz_list = zip(channels_urls, channels_z, urls)
     context = {'channel_ndviz_list': channel_ndviz_list}
@@ -426,5 +445,12 @@ def sgram_from_ndviz(request):
     url = request.GET.get('url')
     coll,exp,x,y,z = parse_ndviz_url(url)
     #get all the channels
-    channels = get_all_channels(request,coll,exp)
-    return plot_sgram(request,coll,exp,x,y,z,channels)
+    #channels = get_all_channels(request,coll,exp)
+    # return plot_sgram(request,coll,exp,x,y,z,channels)
+    
+    #go to form to let user decide what they want to do
+    pass_params_d = {'x': x,'y': y,'z': z}
+    pass_params = '&'.join(['%s=%s' % (key, value) for (key, value) in pass_params_d.items()])
+    params = '?' + pass_params
+    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)) + params)
+    #redirect('synaptogram:cutout', coll=coll,exp=exp) 
