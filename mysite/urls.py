@@ -18,5 +18,6 @@ from django.contrib import admin
 
 urlpatterns = [
     url(r'^synaptogram/', include('synaptogram.urls')),
-    url(r'^admin/', admin.site.urls)
+    url(r'^admin/', admin.site.urls),
+    url(r'openid/', include('djangooidc.urls')),
 ]

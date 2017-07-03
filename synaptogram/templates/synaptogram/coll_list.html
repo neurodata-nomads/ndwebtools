@@ -1,4 +1,7 @@
-<h1>Collection list</h1>
+{% extends 'synaptogram/base.html' %}
+{% block content %}
+
+<h2>Collection list</h2>
 
 <ul>
 {% for coll in collections %}
@@ -10,6 +13,4 @@
 {% endfor %}
 </ul>
 
-<p>{% include 'synaptogram/logout_link.html' %}
-
-<p>{% include 'synaptogram/bookmarklet_link.html' %}
+{% endblock %}

@@ -6,9 +6,6 @@ app_name = 'synaptogram'
 
 urlpatterns = [
     url(r'^$', views.index, name='index'),
-    url(r'^sign_up$', views.sign_up, name='sign_up'),
-    url(r'^login$', views.login, name='login'),
-    url(r'^logout$', views.logout, name='logout'),
     url(r'^coll_list$', views.coll_list, name='coll_list'),
     url(r'^exp_list/(?P<coll>[-\w]+)/$', views.exp_list, name='exp_list'),
     url(r'^cutout/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/$', views.cutout, name='cutout'),

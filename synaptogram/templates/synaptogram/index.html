@@ -1,13 +1,14 @@
+{% extends 'synaptogram/base.html' %}
+{% block content %}
+
 <h1>Welcome to the Boss Cutout web service</h1>
 
-<h2>Login</h2>
+<a href="{% url 'synaptogram:coll_list' %}">
+    {% if user.is_authenticated %}
+    List collections
+    {% else %}
+    Login
+    {% endif %}
+</a>
 
-<form action="{% url 'synaptogram:login' %}" method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <input type="submit" value="Submit" />
-</form>
-
-<p><a href="{% url 'synaptogram:sign_up' %}">Sign up</a>
-
-<p>{% include 'synaptogram/bookmarklet_link.html' %}
+{% endblock %}

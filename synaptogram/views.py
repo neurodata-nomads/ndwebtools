@@ -6,9 +6,10 @@ from django.http import HttpResponseRedirect, HttpResponse
 from django.urls import reverse
 from django.views import generic
 from django.utils import timezone
+from django.contrib.auth.decorators import login_required
+from django.conf import settings
 
 from .forms import *
-from .models import User
 
 import numpy as np
 import matplotlib
@@ -29,105 +30,70 @@ import blosc
 
 import re
 
-from django.conf import settings
-
 # Create your views here.
 
 def index(request):
-    if 'username' in request.session:
-        return redirect('synaptogram:coll_list')
+    if request.user.is_authenticated():
+        username = get_username(request)
     else:
-        return redirect('synaptogram:login')
-
-def login(request):
-    #users = User.all
-    #context=users
-
-    # if this is a POST request we need to process the form data
-    if request.method == 'POST':
-        # create a form instance and populate it with data from the request:
-        form = LoginForm(request.POST)
-        # check whether it's valid:
-        if form.is_valid():
-            # process the data in form.cleaned_data as required
-            username = form.cleaned_data['username']
-            user = User.objects.get(name=username)
-
-            request.session['api_key']=user.api_key
-            request.session['username']=username
-            
-            # redirect to a new URL:
-            return HttpResponseRedirect('coll_list')
-
-    # if a GET (or any other method) we'll create a blank form
-    else:
-        form = LoginForm()
-
-    return render(request, 'synaptogram/index.html', {'form': form})
-
-def sign_up(request):
-    # if this is a POST request we need to process the form data
-    if request.method == 'POST':
-        # create a form instance and populate it with data from the request:
-        form = SignupForm(request.POST)
-        # check whether it's valid:
-        if form.is_valid():
-            # process the data in form.cleaned_data as required
-            username = form.cleaned_data['username']
-            api_key = form.cleaned_data['api_key']
-            
-            user = User(name=username, api_key=api_key)
-            user.save()
-
-            # redirect to a new URL:
-            return HttpResponseRedirect('login')
-
-    # if a GET (or any other method) we'll create a blank form
-    else:
-        form = SignupForm()
-
-    return render(request, 'synaptogram/sign_up.html', {'form': form})
-
-def logout(request):
-    request.session.flush()
-    return redirect('synaptogram:index')
+        username = ''
+    return render(request,'synaptogram/index.html',{'username': username})
 
 def get_boss_request(request,add_url):
-    api_key = request.session['api_key']
+    api_key = request.session['access_token']
     boss_url = 'https://api.boss.neurodata.io/v1/'
-    headers = {'Authorization': 'Token ' + api_key}
+    headers = {'Authorization': 'Bearer ' + api_key}
     url = boss_url + add_url
     return url, headers
 
+def get_resp_from_boss(url, headers):
+    r = requests.get(url, headers = headers)
+    resp = r.json()
+    if 'detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
+        return 'error'
+    return r
+
+@login_required
 def coll_list(request):
     add_url = 'collection/'
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(url, headers)
+    if r == 'error':
+        return redirect('/openid/openid/KeyCloak', args={'next':'synaptogram:coll_list'})
     response = r.json()
     collections = response['collections']
-    username = request.session['username']
+    username = get_username(request)
     context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html',context)
 
+def get_username(request):
+    return request.session['userinfo']['name']
+
+@login_required
 def exp_list(request,coll):
     add_url = 'collection/' + coll + '/experiment/'
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(url, headers)
+    if r == 'error':
+        return redirect('/openid/openid/KeyCloak', args={'next':'synaptogram:exp_list'})
     response = r.json()
     experiments = response['experiments']
 
-    username = request.session['username']
+    username = get_username(request)
     context = {'coll': coll, 'experiments': experiments, 'username': username}
     return render(request, 'synaptogram/exp_list.html',context)
 
 def get_all_channels(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(url, headers)
+    if r == 'error':
+        return [] #need to handle this better
     response = r.json()
     channels = tuple(response['channels'])
     return channels
 
+@login_required
 def cutout(request,coll,exp):
     channels = get_all_channels(request,coll,exp)
     
@@ -172,7 +138,7 @@ def cutout(request,coll,exp):
                 'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])})
         else:
             form = CutoutForm(channels = channels)
-    username = request.session['username']
+    username = get_username(request)
     base_url, headers = get_boss_request(request,'')
     ch=channels[0]
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
@@ -193,6 +159,7 @@ def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
         cut_urls.append(base_url + JJ + '/' + window)
     return cut_urls
 
+@login_required
 def cut_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     
@@ -342,6 +309,7 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
     return response
 
+@login_required
 def sgram(request):
     coll,exp,x,y,z,channels = process_params(request)
     return plot_sgram(request,coll,exp,x,y,z,channels)
@@ -349,13 +317,17 @@ def sgram(request):
 def get_ch_dtype(request,coll,exp,ch):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(url, headers)
+    if r == 'error':
+        []#need to handle this better
     response = r.json()
     return response['datatype']
 
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
-    r_blosc=requests.get(cut_url,headers = headers_blosc)
-    raw_data = blosc.decompress(r_blosc.content)
+    r=get_resp_from_boss(url, headers_blosc)
+    if r == 'error':
+        []#need to handle this better
+    raw_data = blosc.decompress(r.content)
 
     dtype = get_ch_dtype(request,coll,exp,channel)
 
@@ -440,6 +412,7 @@ def parse_ndviz_url(url):
 
     return coll,exp,x,y,z
 
+@login_required
 def sgram_from_ndviz(request):
     url = request.GET.get('url')
     coll,exp,x,y,z = parse_ndviz_url(url)

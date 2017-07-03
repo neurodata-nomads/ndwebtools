@@ -28,7 +28,29 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'bossoidc',
+    'djangooidc',
 ]
+
+AUTHENTICATION_BACKENDS = (  
+    'django.contrib.auth.backends.ModelBackend',
+    'bossoidc.backend.OpenIdConnectBackend',
+)
+
+#local_settings.py contains:
+# SECRET_KEY
+# DEBUG
+# ALLOWED_HOSTS
+# auth_uri
+# client_id
+# public_uri
+try:
+    from .local_settings import *
+except ImportError:
+    pass
+
+from bossoidc.settings import *
+configure_oidc(auth_uri, client_id, public_uri)
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -110,8 +132,3 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 
-
-try:
-    from .local_settings import *
-except ImportError:
-    pass

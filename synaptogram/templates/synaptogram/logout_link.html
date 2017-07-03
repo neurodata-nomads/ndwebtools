@@ -1,5 +1,8 @@
-<h4>Logout:
-<a href="{% url 'synaptogram:logout' %}">
-    {{username}}
-</a>
-</h4>
+<div id="username">
+    {% if user.is_authenticated %}
+        {{username}}
+        <a href="/openid/logout">Logout</a>
+    {% else %}
+        Not logged in.
+    {% endif %}
+</div>
