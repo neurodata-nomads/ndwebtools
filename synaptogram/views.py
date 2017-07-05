@@ -9,6 +9,8 @@ from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 
+import time
+
 from .forms import *
 
 import numpy as np
@@ -40,26 +42,46 @@ def index(request):
     return render(request,'synaptogram/index.html',{'username': username})
 
 def get_boss_request(request,add_url):
-    api_key = request.session['access_token']
+    api_key = request.session.get('access_token')
     boss_url = 'https://api.boss.neurodata.io/v1/'
     headers = {'Authorization': 'Bearer ' + api_key}
     url = boss_url + add_url
     return url, headers
 
-def get_resp_from_boss(url, headers):
+def get_resp_from_boss(request,url, headers):
     r = requests.get(url, headers = headers)
     resp = r.json()
+
+    # for sval in request.session.keys():
+    #     print(sval)
+    #     print(request.session.get(sval))
+    #     print('----------------------------')
+
     if 'detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
         return 'error'
+    elif set_sess_exp(request) == 'error':
+        return 'error'
     return r
+
+def set_sess_exp(request):
+    id_token = request.session.get('id_token')
+    epoch_time_KC = id_token['exp']
+    epoch_time_loc = round(time.time()) # + time.timezone
+    new_exp_time = epoch_time_KC - epoch_time_loc
+    if new_exp_time < 0:
+        return 'error'
+    else:
+        request.session.set_expiry(new_exp_time)
+        return 0
 
 @login_required
 def coll_list(request):
     add_url = 'collection/'
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(url, headers)
+    r = get_resp_from_boss(request,url, headers)
+    request.session['next'] = 'coll_list'
     if r == 'error':
-        return redirect('/openid/openid/KeyCloak', args={'next':'synaptogram:coll_list'})
+        return redirect('/openid/openid/KeyCloak')
     response = r.json()
     collections = response['collections']
     username = get_username(request)
@@ -67,15 +89,16 @@ def coll_list(request):
     return render(request, 'synaptogram/coll_list.html',context)
 
 def get_username(request):
-    return request.session['userinfo']['name']
+    return request.session.get('userinfo')['name']
 
 @login_required
 def exp_list(request,coll):
     add_url = 'collection/' + coll + '/experiment/'
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(url, headers)
+    r = get_resp_from_boss(request,url, headers)
     if r == 'error':
-        return redirect('/openid/openid/KeyCloak', args={'next':'synaptogram:exp_list'})
+        request.session['next'] = 'coll_list/' + coll
+        return redirect('/openid/openid/KeyCloak')
     response = r.json()
     experiments = response['experiments']
 
@@ -86,7 +109,7 @@ def exp_list(request,coll):
 def get_all_channels(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(url, headers)
+    r = get_resp_from_boss(request,url, headers)
     if r == 'error':
         return [] #need to handle this better
     response = r.json()
@@ -142,7 +165,7 @@ def cutout(request,coll,exp):
     base_url, headers = get_boss_request(request,'')
     ch=channels[0]
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
-    ndviz_url = ret_ndviz_urls(base_url,coll,exp,[ch])[0][0]
+    ndviz_url = ret_ndviz_urls(request,base_url,coll,exp,[ch])[0][0]
     context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url}
     return render(request, 'synaptogram/cutout.html', context)
 
@@ -152,7 +175,7 @@ def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
     for ch in channels:
         JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
         dtype = get_ch_dtype(request,coll,exp,ch)
-        if dtype is 'uint16':
+        if dtype == 'uint16':
             window='?window=0,10000'
         else:
             window=''
@@ -171,7 +194,7 @@ def cut_url_list(request):
     context = {'channel_cut_list': channel_cut_list}
     return render(request, 'synaptogram/cut_url_list.html',context)
 
-def ret_ndviz_urls(base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
+def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
@@ -183,11 +206,16 @@ def ret_ndviz_urls(base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
+        dtype = get_ch_dtype(request,coll,exp,ch)
+        if dtype == 'uint16':
+            window='?window=0,10000'
+        else:
+            window=''
         for z_val in range(z_rng[0],z_rng[1]):
             ndviz_urls.append(ndviz_base + '#!{\'layers\':{\'' + ch + 
             '\':{\'type\':\'image\'_\'source\':\'boss://' + boss_url
-            + coll +'/'+ exp + '/' + ch + 
-            '?window=0,10000\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
+            + coll +'/'+ exp + '/' + ch + window +
+            '\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
             + x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
             + ']}}_\'zoomFactor\':20}}')
             channels_urls.append(ch)
@@ -227,7 +255,7 @@ def process_params(request):
 def ndviz_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
-    urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,channels,x,y,z)
+    urls, channels_urls, channels_z = ret_ndviz_urls(request,base_url,coll,exp,channels,x,y,z)
 
     channel_ndviz_list = zip(channels_urls, channels_z, urls)
     context = {'channel_ndviz_list': channel_ndviz_list}
@@ -317,16 +345,16 @@ def sgram(request):
 def get_ch_dtype(request,coll,exp,ch):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(url, headers)
+    r = get_resp_from_boss(request,url, headers)
     if r == 'error':
-        []#need to handle this better
+        return []#need to handle this better
     response = r.json()
     return response['datatype']
 
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
-    r=get_resp_from_boss(url, headers_blosc)
+    r=get_resp_from_boss(request,url, headers_blosc)
     if r == 'error':
-        []#need to handle this better
+        return []#need to handle this better
     raw_data = blosc.decompress(r.content)
 
     dtype = get_ch_dtype(request,coll,exp,channel)
@@ -368,7 +396,7 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
                 #ax.title('z='+ str(z_idx + z_rng[0]))
             #if z_idx is 0:
                 #ax.ylabel(channels[ch_idx])
-            if z_idx is data_mat_reshape.shape[0]-1:
+            if z_idx == data_mat_reshape.shape[0]-1:
                 C = np.concatenate(data_mat_reshape,axis=1)
                 Csum = np.mean(C,axis=1) / 10e3
 
