@@ -39,10 +39,12 @@ def index(request):
         username = get_username(request)
     else:
         username = ''
+    request.session['next'] = 'synaptogram:coll_list'
     return render(request,'synaptogram/index.html',{'username': username})
 
 def get_boss_request(request,add_url):
     api_key = request.session.get('access_token')
+    # api key should always be present because we should be calling get_boss_request from views with @login_required
     boss_url = 'https://api.boss.neurodata.io/v1/'
     headers = {'Authorization': 'Bearer ' + api_key}
     url = boss_url + add_url
@@ -50,18 +52,20 @@ def get_boss_request(request,add_url):
 
 def get_resp_from_boss(request,url, headers):
     r = requests.get(url, headers = headers)
-    resp = r.json()
-
-    # for sval in request.session.keys():
-    #     print(sval)
-    #     print(request.session.get(sval))
-    #     print('----------------------------')
-
-    if 'detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
-        return 'error'
-    elif set_sess_exp(request) == 'error':
-        return 'error'
-    return r
+    try:
+        resp = r.json()
+        # for sval in request.session.keys():
+        #     print(sval)
+        #     print(request.session.get(sval))
+        #     print('----------------------------')
+        if 'detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
+            return 'authentication failure'
+        elif set_sess_exp(request) == 'expire time in past':
+            return 'authentication failure'
+        return r
+    except ValueError:
+        #must be blosc data - return it
+        return r
 
 def set_sess_exp(request):
     id_token = request.session.get('id_token')
@@ -69,7 +73,7 @@ def set_sess_exp(request):
     epoch_time_loc = round(time.time()) # + time.timezone
     new_exp_time = epoch_time_KC - epoch_time_loc
     if new_exp_time < 0:
-        return 'error'
+        return 'expire time in past'
     else:
         request.session.set_expiry(new_exp_time)
         return 0
@@ -79,8 +83,8 @@ def coll_list(request):
     add_url = 'collection/'
     url, headers = get_boss_request(request,add_url)
     r = get_resp_from_boss(request,url, headers)
-    request.session['next'] = 'coll_list'
-    if r == 'error':
+    request.session['next'] = 'synaptogram:coll_list'
+    if r == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
     response = r.json()
     collections = response['collections']
@@ -96,8 +100,8 @@ def exp_list(request,coll):
     add_url = 'collection/' + coll + '/experiment/'
     url, headers = get_boss_request(request,add_url)
     r = get_resp_from_boss(request,url, headers)
-    if r == 'error':
-        request.session['next'] = 'coll_list/' + coll
+    request.session['next'] = '/exp_list/' + coll
+    if r == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
     response = r.json()
     experiments = response['experiments']
@@ -110,7 +114,7 @@ def get_all_channels(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
     url, headers = get_boss_request(request,add_url)
     r = get_resp_from_boss(request,url, headers)
-    if r == 'error':
+    if r == 'authentication failure':
         return [] #need to handle this better
     response = r.json()
     channels = tuple(response['channels'])
@@ -252,6 +256,7 @@ def process_params(request):
 
     return coll,exp,x,y,z,channels
 
+@login_required
 def ndviz_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
@@ -261,6 +266,7 @@ def ndviz_url_list(request):
     context = {'channel_ndviz_list': channel_ndviz_list}
     return render(request, 'synaptogram/ndviz_url_list.html',context)
 
+@login_required
 def tiff_stack(request):
     coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
@@ -346,14 +352,14 @@ def get_ch_dtype(request,coll,exp,ch):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
     url, headers = get_boss_request(request,add_url)
     r = get_resp_from_boss(request,url, headers)
-    if r == 'error':
+    if r == 'authentication failure':
         return []#need to handle this better
     response = r.json()
     return response['datatype']
 
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
-    r=get_resp_from_boss(request,url, headers_blosc)
-    if r == 'error':
+    r=get_resp_from_boss(request,cut_url,headers_blosc)
+    if r == 'authentication failure':
         return []#need to handle this better
     raw_data = blosc.decompress(r.content)
 

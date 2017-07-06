@@ -17,7 +17,7 @@ from django.conf.urls import include, url
 from django.contrib import admin
 
 urlpatterns = [
-    url(r'^synaptogram/', include('synaptogram.urls')),
+    url(r'', include('synaptogram.urls')),
     url(r'^admin/', admin.site.urls),
     url(r'openid/', include('djangooidc.urls')),
 ]
