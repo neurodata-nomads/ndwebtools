@@ -426,12 +426,14 @@ def parse_ndviz_url(url):
     #example URL:
     #"https://viz-dev.boss.neurodata.io/#!{'layers':{'CR1_2ndA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/CR1_2ndA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[657.4783325195312_1069.4876708984375_11]}}_'zoomFactor':69.80685914923684}}"
     split_url = url.split('/')
+    if split_url[2] != 'viz-dev.boss.neurodata.io':
+        return 'incorrect source', None, None, None, None
     coll = split_url[8]
     exp = split_url[9]
     params = split_url[10]
 
     #incorporate the zoom factor when generating synaptogram from bookmarklet
-    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=}})",params)
+    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",params)
     zoom = int(float(match_zoom.group()))
 
     # import pdb; pdb.set_trace()
@@ -450,9 +452,9 @@ def parse_ndviz_url(url):
 def sgram_from_ndviz(request):
     url = request.GET.get('url')
     coll,exp,x,y,z = parse_ndviz_url(url)
-    #get all the channels
-    #channels = get_all_channels(request,coll,exp)
-    # return plot_sgram(request,coll,exp,x,y,z,channels)
+
+    if coll == 'incorrect source':
+        return redirect('synaptogram:coll_list')
     
     #go to form to let user decide what they want to do
     pass_params_d = {'x': x,'y': y,'z': z}
