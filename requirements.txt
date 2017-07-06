@@ -1,0 +1,7 @@
+tifffile==0.12.1
+blosc==1.4.4
+matplotlib==2.0.2
+requests==2.11.1
+boss_oidc==0.1
+Django==1.11.2
+numpy==1.13.0

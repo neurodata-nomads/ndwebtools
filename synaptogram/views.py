@@ -6,9 +6,12 @@ from django.http import HttpResponseRedirect, HttpResponse
 from django.urls import reverse
 from django.views import generic
 from django.utils import timezone
+from django.contrib.auth.decorators import login_required
+from django.conf import settings
+
+import time
 
 from .forms import *
-from .models import User
 
 import numpy as np
 import matplotlib
@@ -29,105 +32,95 @@ import blosc
 
 import re
 
-from django.conf import settings
-
 # Create your views here.
 
 def index(request):
-    if 'username' in request.session:
-        return redirect('synaptogram:coll_list')
+    if request.user.is_authenticated():
+        username = get_username(request)
     else:
-        return redirect('synaptogram:login')
-
-def login(request):
-    #users = User.all
-    #context=users
-
-    # if this is a POST request we need to process the form data
-    if request.method == 'POST':
-        # create a form instance and populate it with data from the request:
-        form = LoginForm(request.POST)
-        # check whether it's valid:
-        if form.is_valid():
-            # process the data in form.cleaned_data as required
-            username = form.cleaned_data['username']
-            user = User.objects.get(name=username)
-
-            request.session['api_key']=user.api_key
-            request.session['username']=username
-            
-            # redirect to a new URL:
-            return HttpResponseRedirect('coll_list')
-
-    # if a GET (or any other method) we'll create a blank form
-    else:
-        form = LoginForm()
-
-    return render(request, 'synaptogram/index.html', {'form': form})
-
-def sign_up(request):
-    # if this is a POST request we need to process the form data
-    if request.method == 'POST':
-        # create a form instance and populate it with data from the request:
-        form = SignupForm(request.POST)
-        # check whether it's valid:
-        if form.is_valid():
-            # process the data in form.cleaned_data as required
-            username = form.cleaned_data['username']
-            api_key = form.cleaned_data['api_key']
-            
-            user = User(name=username, api_key=api_key)
-            user.save()
-
-            # redirect to a new URL:
-            return HttpResponseRedirect('login')
-
-    # if a GET (or any other method) we'll create a blank form
-    else:
-        form = SignupForm()
-
-    return render(request, 'synaptogram/sign_up.html', {'form': form})
-
-def logout(request):
-    request.session.flush()
-    return redirect('synaptogram:index')
+        username = ''
+    request.session['next'] = 'synaptogram:coll_list'
+    return render(request,'synaptogram/index.html',{'username': username})
 
 def get_boss_request(request,add_url):
-    api_key = request.session['api_key']
+    api_key = request.session.get('access_token')
+    # api key should always be present because we should be calling get_boss_request from views with @login_required
     boss_url = 'https://api.boss.neurodata.io/v1/'
-    headers = {'Authorization': 'Token ' + api_key}
+    headers = {'Authorization': 'Bearer ' + api_key}
     url = boss_url + add_url
     return url, headers
 
+def get_resp_from_boss(request,url, headers):
+    r = requests.get(url, headers = headers)
+    try:
+        resp = r.json()
+        # for sval in request.session.keys():
+        #     print(sval)
+        #     print(request.session.get(sval))
+        #     print('----------------------------')
+        if 'detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
+            return 'authentication failure'
+        elif set_sess_exp(request) == 'expire time in past':
+            return 'authentication failure'
+        return r
+    except ValueError:
+        #must be blosc data - return it
+        return r
+
+def set_sess_exp(request):
+    id_token = request.session.get('id_token')
+    epoch_time_KC = id_token['exp']
+    epoch_time_loc = round(time.time()) # + time.timezone
+    new_exp_time = epoch_time_KC - epoch_time_loc
+    if new_exp_time < 0:
+        return 'expire time in past'
+    else:
+        request.session.set_expiry(new_exp_time)
+        return 0
+
+@login_required
 def coll_list(request):
     add_url = 'collection/'
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(request,url, headers)
+    request.session['next'] = 'synaptogram:coll_list'
+    if r == 'authentication failure':
+        return redirect('/openid/openid/KeyCloak')
     response = r.json()
     collections = response['collections']
-    username = request.session['username']
+    username = get_username(request)
     context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html',context)
 
+def get_username(request):
+    return request.session.get('userinfo')['name']
+
+@login_required
 def exp_list(request,coll):
     add_url = 'collection/' + coll + '/experiment/'
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(request,url, headers)
+    request.session['next'] = '/exp_list/' + coll
+    if r == 'authentication failure':
+        return redirect('/openid/openid/KeyCloak')
     response = r.json()
     experiments = response['experiments']
 
-    username = request.session['username']
+    username = get_username(request)
     context = {'coll': coll, 'experiments': experiments, 'username': username}
     return render(request, 'synaptogram/exp_list.html',context)
 
 def get_all_channels(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(request,url, headers)
+    if r == 'authentication failure':
+        return [] #need to handle this better
     response = r.json()
     channels = tuple(response['channels'])
     return channels
 
+@login_required
 def cutout(request,coll,exp):
     channels = get_all_channels(request,coll,exp)
     
@@ -172,11 +165,11 @@ def cutout(request,coll,exp):
                 'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])})
         else:
             form = CutoutForm(channels = channels)
-    username = request.session['username']
+    username = get_username(request)
     base_url, headers = get_boss_request(request,'')
     ch=channels[0]
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
-    ndviz_url = ret_ndviz_urls(base_url,coll,exp,[ch])[0][0]
+    ndviz_url = ret_ndviz_urls(request,base_url,coll,exp,[ch])[0][0]
     context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url}
     return render(request, 'synaptogram/cutout.html', context)
 
@@ -186,13 +179,14 @@ def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
     for ch in channels:
         JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
         dtype = get_ch_dtype(request,coll,exp,ch)
-        if dtype is 'uint16':
+        if dtype == 'uint16':
             window='?window=0,10000'
         else:
             window=''
         cut_urls.append(base_url + JJ + '/' + window)
     return cut_urls
 
+@login_required
 def cut_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     
@@ -204,7 +198,7 @@ def cut_url_list(request):
     context = {'channel_cut_list': channel_cut_list}
     return render(request, 'synaptogram/cut_url_list.html',context)
 
-def ret_ndviz_urls(base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
+def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
@@ -216,11 +210,16 @@ def ret_ndviz_urls(base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
+        dtype = get_ch_dtype(request,coll,exp,ch)
+        if dtype == 'uint16':
+            window='?window=0,10000'
+        else:
+            window=''
         for z_val in range(z_rng[0],z_rng[1]):
             ndviz_urls.append(ndviz_base + '#!{\'layers\':{\'' + ch + 
             '\':{\'type\':\'image\'_\'source\':\'boss://' + boss_url
-            + coll +'/'+ exp + '/' + ch + 
-            '?window=0,10000\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
+            + coll +'/'+ exp + '/' + ch + window +
+            '\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
             + x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
             + ']}}_\'zoomFactor\':20}}')
             channels_urls.append(ch)
@@ -257,15 +256,17 @@ def process_params(request):
 
     return coll,exp,x,y,z,channels
 
+@login_required
 def ndviz_url_list(request):
     coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
-    urls, channels_urls, channels_z = ret_ndviz_urls(base_url,coll,exp,channels,x,y,z)
+    urls, channels_urls, channels_z = ret_ndviz_urls(request,base_url,coll,exp,channels,x,y,z)
 
     channel_ndviz_list = zip(channels_urls, channels_z, urls)
     context = {'channel_ndviz_list': channel_ndviz_list}
     return render(request, 'synaptogram/ndviz_url_list.html',context)
 
+@login_required
 def tiff_stack(request):
     coll,exp,x,y,z,channels = process_params(request)
     base_url, headers = get_boss_request(request,'')
@@ -342,6 +343,7 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
     return response
 
+@login_required
 def sgram(request):
     coll,exp,x,y,z,channels = process_params(request)
     return plot_sgram(request,coll,exp,x,y,z,channels)
@@ -349,13 +351,17 @@ def sgram(request):
 def get_ch_dtype(request,coll,exp,ch):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
     url, headers = get_boss_request(request,add_url)
-    r = requests.get(url, headers = headers)
+    r = get_resp_from_boss(request,url, headers)
+    if r == 'authentication failure':
+        return []#need to handle this better
     response = r.json()
     return response['datatype']
 
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
-    r_blosc=requests.get(cut_url,headers = headers_blosc)
-    raw_data = blosc.decompress(r_blosc.content)
+    r=get_resp_from_boss(request,cut_url,headers_blosc)
+    if r == 'authentication failure':
+        return []#need to handle this better
+    raw_data = blosc.decompress(r.content)
 
     dtype = get_ch_dtype(request,coll,exp,channel)
 
@@ -396,7 +402,7 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
                 #ax.title('z='+ str(z_idx + z_rng[0]))
             #if z_idx is 0:
                 #ax.ylabel(channels[ch_idx])
-            if z_idx is data_mat_reshape.shape[0]-1:
+            if z_idx == data_mat_reshape.shape[0]-1:
                 C = np.concatenate(data_mat_reshape,axis=1)
                 Csum = np.mean(C,axis=1) / 10e3
 
@@ -440,6 +446,7 @@ def parse_ndviz_url(url):
 
     return coll,exp,x,y,z
 
+@login_required
 def sgram_from_ndviz(request):
     url = request.GET.get('url')
     coll,exp,x,y,z = parse_ndviz_url(url)

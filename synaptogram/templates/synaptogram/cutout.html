@@ -1,6 +1,9 @@
-<h1>Set the cutout range</h1>
+{% extends 'synaptogram/base.html' %}
+{% block content %}
 
-<a href="{{ ndviz_url }}">Ndviz link to first channel</a>
+<h2>Set the cutout range</h2>
+
+<a href="{{ ndviz_url }}" target="_blank">Ndviz link to first channel</a>
 
 
 
@@ -22,3 +25,5 @@
 </form>
 
 {% include 'synaptogram/logout_link.html' %}
+
+{% endblock %}

@@ -1,28 +1,5 @@
 from django import forms
 from django.core import validators
-from .models import User
-
-class SignupForm(forms.Form):
-    username = forms.CharField(label='Username', max_length=100)
-    api_key = forms.CharField(label='API token', max_length=40)
-
-    
-    def clean_username(self):
-        username = self.cleaned_data['username']
-        user = User.objects.filter(name=username)
-        if user:
-            raise forms.ValidationError("Username already exists")
-        return username
-
-class LoginForm(forms.Form):
-    username = forms.CharField(label='Username', max_length=100)
-    
-    def clean_username(self):
-        username = self.cleaned_data['username']
-        user = User.objects.filter(name=username)
-        if not user:
-            raise forms.ValidationError("Cannot find user with that username")
-        return username
 
 class CutoutForm(forms.Form):
     def __init__(self,*args,**kwargs):
@@ -47,8 +24,8 @@ class CutoutForm(forms.Form):
     ENDPOINTS = (
         ('sgram','Synaptogram'),
         ('ndviz','Neurodata Viz links per channel'),
-        ('cut_urls','Cut URLS per channel'),
         ('tiff_stack','Download TIFF stack per channel'),
+        ('cut_urls','Cut URLS per channel'),
         )
     endpoint = forms.ChoiceField(label='Return:',choices=ENDPOINTS, 
         widget=forms.RadioSelect())

@@ -1,0 +1,32 @@
+{% load staticfiles %}
+<html>
+<head>
+    <title>Boss Web App</title>
+    <link rel="stylesheet" href="{% static 'css/default.css' %}">
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans|Roboto" rel="stylesheet">
+</head>
+
+<body>
+    <div class="page-header">
+        <h1><a href="/">Boss web app</a></h1>
+
+        
+        {% include 'synaptogram/logout_link.html' %}
+        {% include 'synaptogram/bookmarklet_link.html' %}
+    </div>
+    <div class="content container">
+        <div class="row">
+            <div class="col-md-8">
+            {% block content %}
+            {% endblock %}
+            </div>
+        </div>
+    </div>
+
+
+<div id='footer'>
+    <a href=https://neurodata.io/>Neurodata.io<a>
+</div>
+</body>
+
+</html>
