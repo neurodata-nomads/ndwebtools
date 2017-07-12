@@ -1,8 +1,7 @@
-#import grequests # for async requests, conflicts with requests
 import requests
 
 from django.shortcuts import get_object_or_404, render, redirect
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect, HttpResponse, FileResponse
 from django.urls import reverse
 from django.views import generic
 from django.utils import timezone
@@ -12,7 +11,7 @@ from django.contrib import messages
 
 import time
 
-from .forms import *
+from .forms import CutoutForm
 
 import numpy as np
 import matplotlib
@@ -22,18 +21,21 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+#import png
+#from PIL import Image
+
 import tifffile as tiff
 import zipfile
 import os
-
-#import png
-#from PIL import Image
 
 import blosc
 
 import re
 
-# Create your views here.
+
+
+
+# All the actual views:
 
 def index(request):
     if request.user.is_authenticated():
@@ -42,42 +44,6 @@ def index(request):
         username = ''
     request.session['next'] = 'synaptogram:coll_list'
     return render(request,'synaptogram/index.html',{'username': username})
-
-def get_boss_request(request,add_url):
-    api_key = request.session.get('access_token')
-    # api key should always be present because we should be calling get_boss_request from views with @login_required
-    boss_url = 'https://api.boss.neurodata.io/v1/'
-    headers = {'Authorization': 'Bearer ' + api_key}
-    url = boss_url + add_url
-    return url, headers
-
-def get_resp_from_boss(request,url, headers):
-    r = requests.get(url, headers = headers)
-    if r.status_code == 500:
-        return 'server error'
-    try:
-        resp = r.json()
-        if 'detail' in resp and  resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
-            return 'authentication failure'
-        elif 'message' in resp and 'Incorrect cutout arguments' in resp['message']:
-            return 'incorrect cutout arguments'
-        elif set_sess_exp(request) == 'expire time in past':
-            return 'authentication failure'
-        return resp
-    except ValueError:
-        #must be blosc data - return it
-        return r
-
-def set_sess_exp(request):
-    id_token = request.session.get('id_token')
-    epoch_time_KC = id_token['exp']
-    epoch_time_loc = round(time.time()) # + time.timezone
-    new_exp_time = epoch_time_KC - epoch_time_loc
-    if new_exp_time < 0: #this really shouldn't happen because we expire sessions now
-        return 'expire time in past'
-    else:
-        request.session.set_expiry(new_exp_time)
-        return 0
 
 @login_required
 def coll_list(request):
@@ -91,9 +57,6 @@ def coll_list(request):
     username = get_username(request)
     context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html',context)
-
-def get_username(request):
-    return request.session.get('userinfo')['name']
 
 @login_required
 def exp_list(request,coll):
@@ -109,25 +72,15 @@ def exp_list(request,coll):
     context = {'coll': coll, 'experiments': experiments, 'username': username}
     return render(request, 'synaptogram/exp_list.html',context)
 
-def get_all_channels(request,coll,exp):
-    add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
-    url, headers = get_boss_request(request,add_url)
-    resp = get_resp_from_boss(request,url, headers)
-    if resp == 'authentication failure':
-        return None #need to handle this better
-    if resp['channels'] == []:
-        channels = None
-    else:
-        channels = tuple(resp['channels'])
-    return channels
-
 @login_required
 def cutout(request,coll,exp):
     #we need the channels to fill the form
     channels = get_all_channels(request,coll,exp)
     if channels is None:
-        messages.error(request, 'No channels found for experiment: ' + exp)
         return redirect( reverse('synaptogram:exp_list',args={coll}) )
+    elif channels == 'authentication failure':
+        request.session['next'] = '/cutout/' + coll + '/' + exp
+        return redirect('/openid/openid/KeyCloak')
     
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
@@ -172,24 +125,15 @@ def cutout(request,coll,exp):
             form = CutoutForm(channels = channels)
     username = get_username(request)
     base_url, headers = get_boss_request(request,'')
-    ch=channels[0]
+
+    for ch in channels:
+        ch_type=get_ch_dtype(request,coll,exp,ch)[1]
+        if ch_type != 'annotation':
+            break
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
     ndviz_url = ret_ndviz_urls(request,base_url,coll,exp,[ch])[0][0]
     context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url}
     return render(request, 'synaptogram/cutout.html', context)
-
-def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
-    res=0
-    cut_urls=[]
-    for ch in channels:
-        JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
-        dtype = get_ch_dtype(request,coll,exp,ch)
-        if dtype == 'uint16':
-            window='?window=0,10000'
-        else:
-            window=''
-        cut_urls.append(base_url + JJ + '/' + window)
-    return cut_urls
 
 @login_required
 def cut_url_list(request):
@@ -203,6 +147,134 @@ def cut_url_list(request):
     context = {'channel_cut_list': channel_cut_list}
     return render(request, 'synaptogram/cut_url_list.html',context)
 
+@login_required
+def ndviz_url_list(request):
+    coll,exp,x,y,z,channels = process_params(request)
+    base_url, headers = get_boss_request(request,'')
+    urls, channels_urls, channels_z = ret_ndviz_urls(request,base_url,coll,exp,channels,x,y,z)
+
+    channel_ndviz_list = zip(channels_urls, channels_z, urls)
+    context = {'channel_ndviz_list': channel_ndviz_list}
+    return render(request, 'synaptogram/ndviz_url_list.html',context)
+
+@login_required
+def tiff_stack(request):
+    coll,exp,x,y,z,channels = process_params(request)
+
+    urls=[]
+    for ch in channels:
+        #create links to go to a method that will download the TIFF images inside each channel
+        urls.append(reverse('synaptogram:tiff_stack_channel',args=(coll,exp,x,y,z,ch) ))
+
+    #or package the images and create links for the images
+    channels_arg = ','.join(channels)
+
+    return render(request, 'synaptogram/tiff_url_list.html',{'urls': urls, 
+        'coll':coll, 'exp':exp, 'x':x, 'y':y, 'z':z, 'channels':channels_arg})
+
+@login_required
+def tiff_stack_channel(request,coll,exp,x,y,z,channel):
+    fn = create_tiff_stack(request,coll,exp,x,y,z,channel)
+    if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
+        messages.error(request, fn)
+        return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
+
+    serve_data = open(fn, "rb").read()
+    response=HttpResponse(serve_data, content_type="image/tiff")
+    response['Content-Disposition'] = 'attachment; filename="' + fn.strip('media/') + '"'
+    return response
+
+@login_required
+def sgram(request):
+    coll,exp,x,y,z,channels = process_params(request)
+    return plot_sgram(request,coll,exp,x,y,z,channels)
+
+@login_required
+def sgram_from_ndviz(request):
+    url = request.GET.get('url')
+    coll,exp,x,y,z = parse_ndviz_url(url)
+
+    if coll == 'incorrect source':
+        return redirect('synaptogram:coll_list')
+    
+    #go to form to let user decide what they want to do
+    pass_params_d = {'x': x,'y': y,'z': z}
+    pass_params = '&'.join(['%s=%s' % (key, value) for (key, value) in pass_params_d.items()])
+    params = '?' + pass_params
+    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)) + params)
+    #redirect('synaptogram:cutout', coll=coll,exp=exp) 
+
+
+
+
+
+# All the interaction with the Boss:
+
+def get_boss_request(request,add_url):
+    api_key = request.session.get('access_token')
+    # api key should always be present because we should be calling get_boss_request from views with @login_required
+    boss_url = 'https://api.boss.neurodata.io/v1/'
+    headers = {'Authorization': 'Bearer ' + api_key}
+    url = boss_url + add_url
+    return url, headers
+
+def get_resp_from_boss(request,url, headers):
+    r = requests.get(url, headers = headers)
+    if r.status_code == 500:
+        messages.error(request, 'server error')
+        return 'server error'
+    try:
+        resp = r.json()
+        if ('detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token') \
+                    or set_sess_exp(request) == 'expire time in past':
+            return 'authentication failure' #no message - we just redirecto to keycloak
+        elif 'message' in resp and 'Incorrect cutout arguments' in resp['message']:
+            messages.error(request, resp['message'])
+            return 'incorrect cutout arguments'
+        return resp
+    except ValueError:
+        #must be blosc data - return it
+        return r
+
+def get_all_channels(request,coll,exp):
+    add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
+    url, headers = get_boss_request(request,add_url)
+    resp = get_resp_from_boss(request,url, headers)
+    if resp == 'authentication failure':
+        return resp #need to handle this better
+    elif resp['channels'] == []:
+        messages.error(request, 'No channels found for experiment: ' + exp)
+        return None
+    else:
+        channels = tuple(resp['channels'])
+    return channels
+
+
+def get_ch_dtype(request,coll,exp,ch):
+    add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
+    url, headers = get_boss_request(request,add_url)
+    resp = get_resp_from_boss(request,url, headers)
+    if resp == 'authentication failure':
+        return None#need to handle this better
+    return resp['datatype'], resp['type']
+
+def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
+    r=get_resp_from_boss(request,cut_url,headers_blosc)
+    if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
+        return r
+    raw_data = blosc.decompress(r.content)
+    dtype = get_ch_dtype(request,coll,exp,channel)[0]
+
+    return np.fromstring(raw_data, dtype=dtype)
+
+
+
+
+
+
+
+#helper functions which process data from the Boss or don't interact with the Boss:
+
 def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
@@ -215,7 +287,7 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
     
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
-        dtype = get_ch_dtype(request,coll,exp,ch)
+        dtype = get_ch_dtype(request,coll,exp,ch)[0]
         if dtype == 'uint16':
             window='?window=0,10000'
         else:
@@ -230,6 +302,33 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
             channels_urls.append(ch)
             channels_z.append(str(z_val))
     return ndviz_urls, channels_urls, channels_z
+
+def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
+    res=0
+    cut_urls=[]
+    for ch in channels:
+        JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
+        dtype = get_ch_dtype(request,coll,exp,ch)[0]
+        if dtype == 'uint16':
+            window='?window=0,10000'
+        else:
+            window=''
+        cut_urls.append(base_url + JJ + '/' + window)
+    return cut_urls
+
+def set_sess_exp(request):
+    id_token = request.session.get('id_token')
+    epoch_time_KC = id_token['exp']
+    epoch_time_loc = round(time.time()) # + time.timezone
+    new_exp_time = epoch_time_KC - epoch_time_loc
+    if new_exp_time < 0: #this really shouldn't happen because we expire sessions now
+        return 'expire time in past'
+    else:
+        request.session.set_expiry(new_exp_time)
+        return 0
+
+def get_username(request):
+    return request.session.get('userinfo')['name']
 
 def error_check_int_param(vals):
     split_val=vals.split(':')
@@ -261,31 +360,6 @@ def process_params(request):
 
     return coll,exp,x,y,z,channels
 
-@login_required
-def ndviz_url_list(request):
-    coll,exp,x,y,z,channels = process_params(request)
-    base_url, headers = get_boss_request(request,'')
-    urls, channels_urls, channels_z = ret_ndviz_urls(request,base_url,coll,exp,channels,x,y,z)
-
-    channel_ndviz_list = zip(channels_urls, channels_z, urls)
-    context = {'channel_ndviz_list': channel_ndviz_list}
-    return render(request, 'synaptogram/ndviz_url_list.html',context)
-
-@login_required
-def tiff_stack(request):
-    coll,exp,x,y,z,channels = process_params(request)
-
-    urls=[]
-    for ch in channels:
-        #create links to go to a method that will download the TIFF images inside each channel
-        urls.append(reverse('synaptogram:tiff_stack_channel',args=(coll,exp,x,y,z,ch) ))
-
-    #or package the images and create links for the images
-    channels_arg = ','.join(channels)
-
-    return render(request, 'synaptogram/tiff_url_list.html',{'urls': urls, 
-        'coll':coll, 'exp':exp, 'x':x, 'y':y, 'z':z, 'channels':channels_arg})
-
 def create_voxel_rng(x,y,z):
     x_rng = list(map(int,x.split(':')))
     y_rng = list(map(int,y.split(':')))
@@ -307,14 +381,10 @@ def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
             fn = create_tiff_stack(request,coll,exp,x,y,z,ch)
 
             if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
-                messages.error(request, fn)
                 return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
             myzip.write(fn)
 
-    # zipfile.ZipFile(file, mode='x', compression=ZIP_LZMA, allowZip64=True)
-
-    serve_data = open(fname, "rb").read()
-    response=HttpResponse(serve_data, content_type="image/zip")
+    response = FileResponse(open(fname, 'rb'))
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
     return response
 
@@ -347,41 +417,6 @@ def create_tiff_stack(request,coll,exp,x,y,z,channel):
     np.testing.assert_array_equal(image, img_data)
 
     return fname
-
-@login_required
-def tiff_stack_channel(request,coll,exp,x,y,z,channel):
-    fn = create_tiff_stack(request,coll,exp,x,y,z,channel)
-    if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
-        messages.error(request, fn)
-        return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
-
-    serve_data = open(fn, "rb").read()
-    response=HttpResponse(serve_data, content_type="image/tiff")
-    response['Content-Disposition'] = 'attachment; filename="' + fn.strip('media/') + '"'
-    return response
-
-@login_required
-def sgram(request):
-    coll,exp,x,y,z,channels = process_params(request)
-    return plot_sgram(request,coll,exp,x,y,z,channels)
-
-def get_ch_dtype(request,coll,exp,ch):
-    add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
-    url, headers = get_boss_request(request,add_url)
-    resp = get_resp_from_boss(request,url, headers)
-    if resp == 'authentication failure':
-        return None#need to handle this better
-    return resp['datatype']
-
-def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
-    r=get_resp_from_boss(request,cut_url,headers_blosc)
-    if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
-        return r
-    raw_data = blosc.decompress(r.content)
-
-    dtype = get_ch_dtype(request,coll,exp,channel)
-
-    return np.fromstring(raw_data, dtype=dtype)
 
 def plot_sgram(request,coll,exp,x,y,z,channels):
     base_url, headers = get_boss_request(request,'')
@@ -463,18 +498,3 @@ def parse_ndviz_url(url):
     x,y,z = [(str(p-5) + ':' + str(p+5)) for p in xyz_int]
 
     return coll,exp,x,y,z
-
-@login_required
-def sgram_from_ndviz(request):
-    url = request.GET.get('url')
-    coll,exp,x,y,z = parse_ndviz_url(url)
-
-    if coll == 'incorrect source':
-        return redirect('synaptogram:coll_list')
-    
-    #go to form to let user decide what they want to do
-    pass_params_d = {'x': x,'y': y,'z': z}
-    pass_params = '&'.join(['%s=%s' % (key, value) for (key, value) in pass_params_d.items()])
-    params = '?' + pass_params
-    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)) + params)
-    #redirect('synaptogram:cutout', coll=coll,exp=exp) 

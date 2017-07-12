@@ -3,7 +3,7 @@
 
 <h2>Set the cutout range</h2>
 
-<a href="{{ ndviz_url }}" target="_blank">Ndviz link to first channel</a>
+<a href="{{ ndviz_url }}" target="_blank">Ndviz link to first non-annotation channel</a>
 
 
 
@@ -24,6 +24,9 @@
     <input type="submit" value="Submit" />
 </form>
 
-{% include 'synaptogram/logout_link.html' %}
+← 
+<a href="{% url 'synaptogram:exp_list' coll %}">
+    Back
+</a>
 
 {% endblock %}

@@ -1,8 +1,8 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
-<h2>Experiment list</h2>
 
+<h2>Experiment list</h2>
 
 <ul>
 {% for exp in experiments %}
@@ -13,5 +13,11 @@
 </li>
 {% endfor %}
 </ul>
+
+
+← 
+<a href="{% url 'synaptogram:coll_list' %}">
+    Back
+</a>
 
 {% endblock %}
