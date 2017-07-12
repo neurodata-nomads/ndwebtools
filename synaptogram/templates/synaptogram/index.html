@@ -1,8 +1,13 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
-<h1>Welcome to the Boss Cutout web service</h1>
+<h1>Welcome to the Neurodata Boss web applicatin</h1>
 
+<p>
+This application provides a TIFF image cutout service for the Boss.  It also provides vizualization tools.
+</p>
+
+<p>
 <a href="{% url 'synaptogram:coll_list' %}">
     {% if user.is_authenticated %}
     List collections
@@ -10,5 +15,6 @@
     Login
     {% endif %}
 </a>
+</p>
 
 {% endblock %}

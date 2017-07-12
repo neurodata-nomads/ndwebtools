@@ -8,6 +8,7 @@ from django.views import generic
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
+from django.contrib import messages
 
 import time
 
@@ -52,17 +53,17 @@ def get_boss_request(request,add_url):
 
 def get_resp_from_boss(request,url, headers):
     r = requests.get(url, headers = headers)
+    if r.status_code == 500:
+        return 'server error'
     try:
         resp = r.json()
-        # for sval in request.session.keys():
-        #     print(sval)
-        #     print(request.session.get(sval))
-        #     print('----------------------------')
-        if 'detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
+        if 'detail' in resp and  resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token':
             return 'authentication failure'
+        elif 'message' in resp and 'Incorrect cutout arguments' in resp['message']:
+            return 'incorrect cutout arguments'
         elif set_sess_exp(request) == 'expire time in past':
             return 'authentication failure'
-        return r
+        return resp
     except ValueError:
         #must be blosc data - return it
         return r
@@ -72,7 +73,7 @@ def set_sess_exp(request):
     epoch_time_KC = id_token['exp']
     epoch_time_loc = round(time.time()) # + time.timezone
     new_exp_time = epoch_time_KC - epoch_time_loc
-    if new_exp_time < 0:
+    if new_exp_time < 0: #this really shouldn't happen because we expire sessions now
         return 'expire time in past'
     else:
         request.session.set_expiry(new_exp_time)
@@ -82,12 +83,11 @@ def set_sess_exp(request):
 def coll_list(request):
     add_url = 'collection/'
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(request,url, headers)
+    resp = get_resp_from_boss(request,url, headers)
     request.session['next'] = 'synaptogram:coll_list'
-    if r == 'authentication failure':
+    if resp == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
-    response = r.json()
-    collections = response['collections']
+    collections = resp['collections']
     username = get_username(request)
     context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html',context)
@@ -99,12 +99,11 @@ def get_username(request):
 def exp_list(request,coll):
     add_url = 'collection/' + coll + '/experiment/'
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(request,url, headers)
+    resp = get_resp_from_boss(request,url, headers)
     request.session['next'] = '/exp_list/' + coll
-    if r == 'authentication failure':
+    if resp == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
-    response = r.json()
-    experiments = response['experiments']
+    experiments = resp['experiments']
 
     username = get_username(request)
     context = {'coll': coll, 'experiments': experiments, 'username': username}
@@ -113,16 +112,22 @@ def exp_list(request,coll):
 def get_all_channels(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(request,url, headers)
-    if r == 'authentication failure':
-        return [] #need to handle this better
-    response = r.json()
-    channels = tuple(response['channels'])
+    resp = get_resp_from_boss(request,url, headers)
+    if resp == 'authentication failure':
+        return None #need to handle this better
+    if resp['channels'] == []:
+        channels = None
+    else:
+        channels = tuple(resp['channels'])
     return channels
 
 @login_required
 def cutout(request,coll,exp):
+    #we need the channels to fill the form
     channels = get_all_channels(request,coll,exp)
+    if channels is None:
+        messages.error(request, 'No channels found for experiment: ' + exp)
+        return redirect( reverse('synaptogram:exp_list',args={coll}) )
     
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
@@ -269,7 +274,6 @@ def ndviz_url_list(request):
 @login_required
 def tiff_stack(request):
     coll,exp,x,y,z,channels = process_params(request)
-    base_url, headers = get_boss_request(request,'')
 
     urls=[]
     for ch in channels:
@@ -301,6 +305,10 @@ def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
     with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
         for ch in channels:
             fn = create_tiff_stack(request,coll,exp,x,y,z,ch)
+
+            if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
+                messages.error(request, fn)
+                return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
             myzip.write(fn)
 
     # zipfile.ZipFile(file, mode='x', compression=ZIP_LZMA, allowZip64=True)
@@ -321,6 +329,10 @@ def create_tiff_stack(request,coll,exp,x,y,z,channel):
     headers_blosc['Content-Type']='application/blosc-python'
 
     data_mat = get_chan_img_data(request,cu,headers_blosc,coll,exp,channel)
+
+    if data_mat == 'authentication failure' or data_mat == 'incorrect cutout arguments':
+        return data_mat
+
     #if this is a time series, you need to reshape it differently
     img_data = np.reshape(data_mat,
                                 (z_rng[1] - z_rng[0],
@@ -336,11 +348,16 @@ def create_tiff_stack(request,coll,exp,x,y,z,channel):
 
     return fname
 
+@login_required
 def tiff_stack_channel(request,coll,exp,x,y,z,channel):
-    fname = create_tiff_stack(request,coll,exp,x,y,z,channel)
-    serve_data = open(fname, "rb").read()
+    fn = create_tiff_stack(request,coll,exp,x,y,z,channel)
+    if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
+        messages.error(request, fn)
+        return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
+
+    serve_data = open(fn, "rb").read()
     response=HttpResponse(serve_data, content_type="image/tiff")
-    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
+    response['Content-Disposition'] = 'attachment; filename="' + fn.strip('media/') + '"'
     return response
 
 @login_required
@@ -351,16 +368,15 @@ def sgram(request):
 def get_ch_dtype(request,coll,exp,ch):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
     url, headers = get_boss_request(request,add_url)
-    r = get_resp_from_boss(request,url, headers)
-    if r == 'authentication failure':
-        return []#need to handle this better
-    response = r.json()
-    return response['datatype']
+    resp = get_resp_from_boss(request,url, headers)
+    if resp == 'authentication failure':
+        return None#need to handle this better
+    return resp['datatype']
 
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
     r=get_resp_from_boss(request,cut_url,headers_blosc)
-    if r == 'authentication failure':
-        return []#need to handle this better
+    if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
+        return r
     raw_data = blosc.decompress(r.content)
 
     dtype = get_ch_dtype(request,coll,exp,channel)

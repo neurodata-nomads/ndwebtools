@@ -14,6 +14,15 @@
         {% include 'synaptogram/logout_link.html' %}
         {% include 'synaptogram/bookmarklet_link.html' %}
     </div>
+
+    {% if messages %}
+    <ul class="messages">
+        {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
     <div class="content container">
         <div class="row">
             <div class="col-md-8">
