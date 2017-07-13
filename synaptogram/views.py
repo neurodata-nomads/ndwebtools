@@ -81,12 +81,22 @@ def cutout(request,coll,exp):
     elif channels == 'authentication failure':
         request.session['next'] = '/cutout/' + coll + '/' + exp
         return redirect('/openid/openid/KeyCloak')
-    
+
+    #getting the coordinate frame limits for the experiment:
+    exp_meta = get_coordinate_frame(request,coll,exp)
+    #important stuff out of exp_meta:
+        # "x_start": 0,
+        # "x_stop": 1000,
+        # "y_start": 0,
+        # "y_stop": 1000,
+        # "z_start": 0,
+        # "z_stop": 500    
+
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
         # create a form instance and populate it with data from the request:
 
-        form = CutoutForm(request.POST, channels=channels)
+        form = CutoutForm(request.POST, channels=channels, limits = exp_meta)
         # check whether it's valid:
         if form.is_valid():
             # process the data in form.cleaned_data as required
@@ -113,16 +123,6 @@ def cutout(request,coll,exp):
 
     # if a GET (or any other method) we'll create a blank form
     else:
-        #getting the coordinate frame limits for the experiment:
-        exp_meta = get_coordinate_frame(request,coll,exp)
-        #important stuff out of exp_meta:
-            # "x_start": 0,
-            # "x_stop": 1000,
-            # "y_start": 0,
-            # "y_stop": 1000,
-            # "z_start": 0,
-            # "z_stop": 500
-
         q = request.GET
         x_param = q.get('x')
         if x_param is not None:
@@ -131,12 +131,10 @@ def cutout(request,coll,exp):
             form = CutoutForm(channels=channels, 
                 initial={   'x_min':str(x_rng[0]),'y_min':str(y_rng[0]),'z_min':str(z_rng[0]),
                             'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])},
-                limits={    'x_start':exp_meta['x_start'],'y_start':exp_meta['y_start'],'z_start':exp_meta['z_start'],
-                            'x_stop':exp_meta['x_stop'],'y_stop':exp_meta['y_stop'],'z_stop':exp_meta['z_stop']  })
+                limits=exp_meta)
         else:
             form = CutoutForm(channels = channels,
-                limits={    'x_start':exp_meta['x_start'],'y_start':exp_meta['y_start'],'z_start':exp_meta['z_start'],
-                            'x_stop':exp_meta['x_stop'],'y_stop':exp_meta['y_stop'],'z_stop':exp_meta['z_stop']  })
+                limits=exp_meta)
     username = get_username(request)
     base_url, headers = get_boss_request(request,'')
 
@@ -158,7 +156,7 @@ def cut_url_list(request):
     
     channel_cut_list = zip(channels, urls)
 
-    context = {'channel_cut_list': channel_cut_list}
+    context = {'channel_cut_list': channel_cut_list, 'coll':coll, 'exp':exp}
     return render(request, 'synaptogram/cut_url_list.html',context)
 
 @login_required
@@ -168,7 +166,7 @@ def ndviz_url_list(request):
     urls, channels_urls, channels_z = ret_ndviz_urls(request,base_url,coll,exp,channels,x,y,z)
 
     channel_ndviz_list = zip(channels_urls, channels_z, urls)
-    context = {'channel_ndviz_list': channel_ndviz_list}
+    context = {'channel_ndviz_list': channel_ndviz_list, 'coll':coll, 'exp':exp}
     return render(request, 'synaptogram/ndviz_url_list.html',context)
 
 @login_required
@@ -190,7 +188,6 @@ def tiff_stack(request):
 def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     fn = create_tiff_stack(request,coll,exp,x,y,z,channel)
     if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
-        messages.error(request, fn)
         return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
 
     serve_data = open(fn, "rb").read()
@@ -271,23 +268,24 @@ def get_ch_metadata(request,coll,exp,ch):
         return None#need to handle this better
     return resp['datatype'], resp['type']
 
-def get_exp_coord_frame(request,coll,exp):
+def get_exp_metadata(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
         return None#need to handle this better
-    return resp['coord_frame']
+    return resp
 
 def get_coordinate_frame(request,coll,exp):
     # https://api.theboss.io/v1/coord/:coordinate_frame
-    coord_frame = get_exp_coord_frame(request,coll,exp)
+    exp_meta = get_exp_metadata(request,coll,exp)
+    coord_frame = exp_meta['coord_frame']
     add_url = 'coord/' + coord_frame
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
         return None#need to handle this better
-    #check that it contains these data:
+    #check that it contains these data otherwise raise exception:
     # "x_start": 0,
     # "x_stop": 1000,
     # "y_start": 0,
@@ -380,7 +378,11 @@ def error_check_int_param(vals):
     try:
         val_chk_list = [str(int(a)) for a in split_val]
         vals_chk = ':'.join(val_chk_list)
+
+        #check here if value is within range of the coord_frame, otherwise, raise an exception
+
         return vals_chk
+
     except Exception as e:
         print(e)
 
@@ -458,8 +460,9 @@ def create_tiff_stack(request,coll,exp,x,y,z,channel):
     fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
     tiff.imsave(fname, img_data)
     
-    image = tiff.imread(fname)
-    np.testing.assert_array_equal(image, img_data)
+    #running out of memory so I am not doing this anymore:
+    # image = tiff.imread(fname)
+    # np.testing.assert_array_equal(image, img_data)
 
     return fname
 

@@ -3,32 +3,33 @@ from django.core import validators
 
 class CutoutForm(forms.Form):
     def __init__(self,*args,**kwargs):
-        CHOICES = kwargs.pop('channels')
-        LIMITS = kwargs.pop('limits')
+        choices = kwargs.pop('channels')
+        limits= kwargs.pop('limits')
+        
         super(CutoutForm, self).__init__(*args, **kwargs)
         self.fields['channels'] = forms.MultipleChoiceField(
-            label='Channels:',choices=[(c, c) for c in CHOICES], 
+            label='Channels:',choices=[(c, c) for c in choices], 
             widget=forms.CheckboxSelectMultiple,
-            initial= [c for c in CHOICES])
+            initial= [c for c in choices])
         # self.fields['channels'] = forms.ChoiceField(label='Channels',
         #     choices=[(c, c) for c in CHOICES])
         
-        self.fields['x_min'] = forms.IntegerField(label='x_min',min_value=LIMITS['x_start'],max_value=LIMITS['x_stop'])
-        self.fields['x_max'] = forms.IntegerField(label='x_max',min_value=LIMITS['x_start'],max_value=LIMITS['x_stop'])
+        self.fields['x_min'] = forms.IntegerField(label='x_min',min_value=limits['x_start'],max_value=limits['x_stop'])
+        self.fields['x_max'] = forms.IntegerField(label='x_max',min_value=limits['x_start'],max_value=limits['x_stop'])
 
-        self.fields['y_min'] = forms.IntegerField(label='y_min',min_value=LIMITS['y_start'],max_value=LIMITS['y_stop'])
-        self.fields['y_max'] = forms.IntegerField(label='y_max',min_value=LIMITS['y_start'],max_value=LIMITS['y_stop'])
+        self.fields['y_min'] = forms.IntegerField(label='y_min',min_value=limits['y_start'],max_value=limits['y_stop'])
+        self.fields['y_max'] = forms.IntegerField(label='y_max',min_value=limits['y_start'],max_value=limits['y_stop'])
     
-        self.fields['z_min'] = forms.IntegerField(label='z_min',min_value=LIMITS['z_start'],max_value=LIMITS['z_stop'])
-        self.fields['z_max'] = forms.IntegerField(label='z_max',min_value=LIMITS['z_start'],max_value=LIMITS['z_stop'])
+        self.fields['z_min'] = forms.IntegerField(label='z_min',min_value=limits['z_start'],max_value=limits['z_stop'])
+        self.fields['z_max'] = forms.IntegerField(label='z_max',min_value=limits['z_start'],max_value=limits['z_stop'])
 
-    ENDPOINTS = (
+    next_action = (
         ('sgram','Synaptogram'),
         ('ndviz','Neurodata Viz links per channel'),
         ('tiff_stack','Download TIFF stack per channel'),
         ('cut_urls','Cut URLS per channel'),
         )
-    endpoint = forms.ChoiceField(label='Return:',choices=ENDPOINTS, 
+    endpoint = forms.ChoiceField(label='Return:',choices=next_action, 
         widget=forms.RadioSelect())
 
 
