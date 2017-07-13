@@ -5,7 +5,13 @@
 
 <a href="{{ ndviz_url }}" target="_blank">Ndviz link to first non-annotation channel</a>
 
-
+<ul>
+{% for key,val in exp_meta.items %}
+    <li>
+    {{key}}: {{val}}
+    </li>
+{% endfor %}
+</ul>
 
 <p>
 <form action="{% url 'synaptogram:cutout' coll exp %}" method="post">

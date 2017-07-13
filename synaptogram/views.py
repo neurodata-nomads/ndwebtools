@@ -113,26 +113,40 @@ def cutout(request,coll,exp):
 
     # if a GET (or any other method) we'll create a blank form
     else:
+        #getting the coordinate frame limits for the experiment:
+        exp_meta = get_coordinate_frame(request,coll,exp)
+        #important stuff out of exp_meta:
+            # "x_start": 0,
+            # "x_stop": 1000,
+            # "y_start": 0,
+            # "y_stop": 1000,
+            # "z_start": 0,
+            # "z_stop": 500
+
         q = request.GET
         x_param = q.get('x')
         if x_param is not None:
             x,y,z = xyz_from_params(q)
             x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
             form = CutoutForm(channels=channels, 
-                initial={'x_min':str(x_rng[0]),'y_min':str(y_rng[0]),'z_min':str(z_rng[0]),
-                'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])})
+                initial={   'x_min':str(x_rng[0]),'y_min':str(y_rng[0]),'z_min':str(z_rng[0]),
+                            'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])},
+                limits={    'x_start':exp_meta['x_start'],'y_start':exp_meta['y_start'],'z_start':exp_meta['z_start'],
+                            'x_stop':exp_meta['x_stop'],'y_stop':exp_meta['y_stop'],'z_stop':exp_meta['z_stop']  })
         else:
-            form = CutoutForm(channels = channels)
+            form = CutoutForm(channels = channels,
+                limits={    'x_start':exp_meta['x_start'],'y_start':exp_meta['y_start'],'z_start':exp_meta['z_start'],
+                            'x_stop':exp_meta['x_stop'],'y_stop':exp_meta['y_stop'],'z_stop':exp_meta['z_stop']  })
     username = get_username(request)
     base_url, headers = get_boss_request(request,'')
 
     for ch in channels:
-        ch_type=get_ch_dtype(request,coll,exp,ch)[1]
+        ch_type=get_ch_metadata(request,coll,exp,ch)[1]
         if ch_type != 'annotation':
             break
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
     ndviz_url = ret_ndviz_urls(request,base_url,coll,exp,[ch])[0][0]
-    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url}
+    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url, 'exp_meta': exp_meta}
     return render(request, 'synaptogram/cutout.html', context)
 
 @login_required
@@ -249,8 +263,7 @@ def get_all_channels(request,coll,exp):
         channels = tuple(resp['channels'])
     return channels
 
-
-def get_ch_dtype(request,coll,exp,ch):
+def get_ch_metadata(request,coll,exp,ch):
     add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
@@ -258,14 +271,46 @@ def get_ch_dtype(request,coll,exp,ch):
         return None#need to handle this better
     return resp['datatype'], resp['type']
 
+def get_exp_coord_frame(request,coll,exp):
+    add_url = 'collection/' + coll + '/experiment/' + exp
+    url, headers = get_boss_request(request,add_url)
+    resp = get_resp_from_boss(request,url, headers)
+    if resp == 'authentication failure':
+        return None#need to handle this better
+    return resp['coord_frame']
+
+def get_coordinate_frame(request,coll,exp):
+    # https://api.theboss.io/v1/coord/:coordinate_frame
+    coord_frame = get_exp_coord_frame(request,coll,exp)
+    add_url = 'coord/' + coord_frame
+    url, headers = get_boss_request(request,add_url)
+    resp = get_resp_from_boss(request,url, headers)
+    if resp == 'authentication failure':
+        return None#need to handle this better
+    #check that it contains these data:
+    # "x_start": 0,
+    # "x_stop": 1000,
+    # "y_start": 0,
+    # "y_stop": 1000,
+    # "z_start": 0,
+    # "z_stop": 500,
+    # "x_voxel_size": 1.0,
+    # "y_voxel_size": 1.0,
+    # "z_voxel_size": 1.0,
+    # "voxel_unit": "nanometers",
+    return resp
+
+
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
     r=get_resp_from_boss(request,cut_url,headers_blosc)
     if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
         return r
     raw_data = blosc.decompress(r.content)
-    dtype = get_ch_dtype(request,coll,exp,channel)[0]
+    dtype = get_ch_metadata(request,coll,exp,channel)[0]
 
     return np.fromstring(raw_data, dtype=dtype)
+
+    
 
 
 
@@ -287,7 +332,7 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
     
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
-        dtype = get_ch_dtype(request,coll,exp,ch)[0]
+        dtype = get_ch_metadata(request,coll,exp,ch)[0]
         if dtype == 'uint16':
             window='?window=0,10000'
         else:
@@ -308,7 +353,7 @@ def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
     cut_urls=[]
     for ch in channels:
         JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
-        dtype = get_ch_dtype(request,coll,exp,ch)[0]
+        dtype = get_ch_metadata(request,coll,exp,ch)[0]
         if dtype == 'uint16':
             window='?window=0,10000'
         else:
