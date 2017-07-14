@@ -27,7 +27,7 @@ class CutoutForm(forms.Form):
         ('sgram','Synaptogram'),
         ('ndviz','Neurodata Viz links per channel'),
         ('tiff_stack','Download TIFF stack per channel'),
-        ('cut_urls','Cut URLS per channel'),
+        # ('cut_urls','Cut URLS per channel'),
         )
     endpoint = forms.ChoiceField(label='Return:',choices=next_action, 
         widget=forms.RadioSelect())

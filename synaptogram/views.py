@@ -139,12 +139,12 @@ def cutout(request,coll,exp):
     base_url, headers = get_boss_request(request,'')
 
     for ch in channels:
-        ch_type=get_ch_metadata(request,coll,exp,ch)[1]
-        if ch_type != 'annotation':
+        ch_metadata=get_ch_metadata(request,coll,exp,ch)
+        if ch_metadata['type'] != 'annotation':
             break
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
     ndviz_url = ret_ndviz_urls(request,base_url,coll,exp,[ch])[0][0]
-    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url, 'exp_meta': exp_meta}
+    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url, 'exp_meta': sorted(exp_meta.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 @login_required
@@ -203,10 +203,13 @@ def sgram(request):
 @login_required
 def sgram_from_ndviz(request):
     url = request.GET.get('url')
-    coll,exp,x,y,z = parse_ndviz_url(url)
+    coll,exp,x,y,z = parse_ndviz_url(request,url)
 
     if coll == 'incorrect source':
         return redirect('synaptogram:coll_list')
+    elif coll == 'authentication failure':
+        # request.session['next'] = 'synaptogram:coll_list'
+        return redirect('/openid/openid/KeyCloak')
     
     #go to form to let user decide what they want to do
     pass_params_d = {'x': x,'y': y,'z': z}
@@ -265,26 +268,28 @@ def get_ch_metadata(request,coll,exp,ch):
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
-        return None#need to handle this better
-    return resp['datatype'], resp['type']
+        return resp#need to handle this better
+    return resp
 
 def get_exp_metadata(request,coll,exp):
     add_url = 'collection/' + coll + '/experiment/' + exp
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
-        return None#need to handle this better
+        return resp#need to handle this better
     return resp
 
 def get_coordinate_frame(request,coll,exp):
     # https://api.theboss.io/v1/coord/:coordinate_frame
     exp_meta = get_exp_metadata(request,coll,exp)
+    if exp_meta == 'authentication failure':
+        return exp_meta
     coord_frame = exp_meta['coord_frame']
     add_url = 'coord/' + coord_frame
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
-        return None#need to handle this better
+        return resp#need to handle this better
     #check that it contains these data otherwise raise exception:
     # "x_start": 0,
     # "x_stop": 1000,
@@ -298,15 +303,14 @@ def get_coordinate_frame(request,coll,exp):
     # "voxel_unit": "nanometers",
     return resp
 
-
 def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
     r=get_resp_from_boss(request,cut_url,headers_blosc)
     if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
         return r
     raw_data = blosc.decompress(r.content)
-    dtype = get_ch_metadata(request,coll,exp,channel)[0]
+    ch_metadata = get_ch_metadata(request,coll,exp,channel)
 
-    return np.fromstring(raw_data, dtype=dtype)
+    return np.fromstring(raw_data, dtype=ch_metadata['datatype'])
 
     
 
@@ -318,6 +322,12 @@ def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
 
 #helper functions which process data from the Boss or don't interact with the Boss:
 
+def get_voxel_size(coord_frame):
+    x = coord_frame['x_voxel_size']
+    y = coord_frame['y_voxel_size']
+    z = coord_frame['z_voxel_size']
+    return [x,y,z]
+
 def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
@@ -327,11 +337,16 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
     channels_z=[]
     ndviz_base = 'https://viz-dev.boss.neurodata.io/'
     boss_url = 'https://api.boss.neurodata.io/'
+
+    coord_frame = get_coordinate_frame(request,coll,exp)
+    #error check
+
+    xyz_voxel_size = get_voxel_size(coord_frame)
     
     for ch in channels:
         z_rng = list(map(int,z.split(':')))
-        dtype = get_ch_metadata(request,coll,exp,ch)[0]
-        if dtype == 'uint16':
+        ch_metadata = get_ch_metadata(request,coll,exp,ch)
+        if ch_metadata['datatype'] == 'uint16':
             window='?window=0,10000'
         else:
             window=''
@@ -339,8 +354,10 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
             ndviz_urls.append(ndviz_base + '#!{\'layers\':{\'' + ch + 
             '\':{\'type\':\'image\'_\'source\':\'boss://' + boss_url
             + coll +'/'+ exp + '/' + ch + window +
-            '\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[100_100_70]_\'voxelCoordinates\':['
-            + x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
+            '\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[' + 
+            '_'.join(map(str,xyz_voxel_size))
+            + ']_\'voxelCoordinates\':[' +
+            x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
             + ']}}_\'zoomFactor\':20}}')
             channels_urls.append(ch)
             channels_z.append(str(z_val))
@@ -351,8 +368,8 @@ def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
     cut_urls=[]
     for ch in channels:
         JJ='/'.join( ('cutout',coll,exp,ch,str(res),x,y,z ) )
-        dtype = get_ch_metadata(request,coll,exp,ch)[0]
-        if dtype == 'uint16':
+        ch_metadata = get_ch_metadata(request,coll,exp,ch)
+        if ch_metadata['datatype'] == 'uint16':
             window='?window=0,10000'
         else:
             window=''
@@ -434,7 +451,6 @@ def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
     response = FileResponse(open(fname, 'rb'))
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
     return response
-
 
 def create_tiff_stack(request,coll,exp,x,y,z,channel):
     base_url, headers = get_boss_request(request,'')
@@ -521,7 +537,7 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
     canvas.print_png(response)
     return response
 
-def parse_ndviz_url(url):
+def parse_ndviz_url(request, url):
     #example URL:
     #"https://viz-dev.boss.neurodata.io/#!{'layers':{'CR1_2ndA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/CR1_2ndA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[657.4783325195312_1069.4876708984375_11]}}_'zoomFactor':69.80685914923684}}"
     split_url = url.split('/')
@@ -532,17 +548,41 @@ def parse_ndviz_url(url):
     params = split_url[10]
 
     #incorporate the zoom factor when generating synaptogram from bookmarklet
+    #not currently implemented
     match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",params)
     zoom = int(float(match_zoom.group()))
 
-    # import pdb; pdb.set_trace()
+    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",params)
+    xyz_voxel = match_xyz_voxel.group()
+    xyz_voxel_float = xyz_voxel.split('_')
 
     match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",params)
     xyz = match_xyz.group()
     xyz_float = xyz.split('_')
     xyz_int = [int(float(p)) for p in xyz_float]
 
+    #convert the units from ndviz to boss units
+    coord_frame = get_coordinate_frame(request,coll,exp)
+    if coord_frame == 'authentication failure':
+        return 'authentication failure', None, None, None, None
+    xyz_int = ndviz_units_to_boss(coord_frame, xyz_voxel_float, xyz_int)
+
     #creates the string param that using now - these will be integer lists at some point
     x,y,z = [(str(p-5) + ':' + str(p+5)) for p in xyz_int]
 
     return coll,exp,x,y,z
+
+#we need to do this in case the user specified wrong voxel units in the ndviz url
+def ndviz_units_to_boss(coord_frame,ndviz_voxel,xyz_int):
+    #z doesn't change only xy
+    z = xyz_int[2]
+    xy  = xyz_int[0:2]
+    #doesn't account for time
+
+    boss_vox_size_xy = [coord_frame['x_voxel_size'], coord_frame['y_voxel_size']]
+    ndviz_voxel_xy = map(float,ndviz_voxel[0:2])
+    
+    xy_conv = list(map(lambda a,b,n: round( a/n*b ), xy, boss_vox_size_xy, ndviz_voxel_xy))
+    xy_conv.append(z)
+    
+    return xy_conv
