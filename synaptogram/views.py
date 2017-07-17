@@ -27,6 +27,7 @@ from matplotlib.figure import Figure
 import tifffile as tiff
 import zipfile
 import os
+from wsgiref.util import FileWrapper
 
 import blosc
 
@@ -190,13 +191,45 @@ def tiff_stack(request):
 
 @login_required
 def tiff_stack_channel(request,coll,exp,x,y,z,channel):
-    fn = create_tiff_stack(request,coll,exp,x,y,z,channel)
-    if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
+    img_data = get_chan_img_data(request,coll,exp,channel,x,y,z)
+    if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
         return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
 
-    serve_data = open(fn, "rb").read()
-    response=HttpResponse(serve_data, content_type="image/tiff")
-    response['Content-Disposition'] = 'attachment; filename="' + fn.strip('media/') + '"'
+    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
+    tiff.imsave(fname, img_data)
+
+    response = FileResponse(open(fname, 'rb'),content_type='image/TIFF')
+    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
+    return response
+
+@login_required
+def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
+    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z))).replace(':','_') + '.zip'
+    
+    channels = channels.split(',')
+
+    try:
+        os.remove(fname)
+    except OSError:
+        pass
+
+    with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
+        for ch in channels:
+            img_data = get_chan_img_data(request,coll,exp,ch,x,y,z)
+            
+            fn = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),ch)).replace(':','_') + '.tiff'
+            tiff.imsave(fn, img_data)
+            
+            #running out of memory so I am not doing this anymore:
+            # image = tiff.imread(fname)
+            # np.testing.assert_array_equal(image, img_data)
+
+            if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
+                return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
+            myzip.write(fn)
+
+    response = FileResponse(open(fname, 'rb'))
+    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
     return response
 
 @login_required
@@ -221,29 +254,6 @@ def sgram_from_ndviz(request):
     params = '?' + pass_params
     return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)) + params)
     #redirect('synaptogram:cutout', coll=coll,exp=exp) 
-
-@login_required
-def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
-    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z))).replace(':','_') + '.zip'
-    
-    channels = channels.split(',')
-
-    try:
-        os.remove(fname)
-    except OSError:
-        pass
-
-    with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
-        for ch in channels:
-            fn = create_tiff_stack(request,coll,exp,x,y,z,ch)
-
-            if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
-                return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
-            myzip.write(fn)
-
-    response = FileResponse(open(fname, 'rb'))
-    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
-    return response
 
 def set_sess_exp(request):
     id_token = request.session.get('id_token')
@@ -343,15 +353,6 @@ def get_coordinate_frame(request,coll,exp):
     # "voxel_unit": "nanometers",
     return resp
 
-def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
-    r=get_resp_from_boss(request,cut_url,headers_blosc)
-    if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
-        return r
-    raw_data = blosc.decompress(r.content)
-    ch_metadata = get_ch_metadata(request,coll,exp,channel)
-
-    return np.fromstring(raw_data, dtype=ch_metadata['datatype'])
-
     
 
 
@@ -361,6 +362,32 @@ def get_chan_img_data(request,cut_url,headers_blosc,coll,exp,channel):
 
 
 #helper functions which process data from the Boss or don't interact with the Boss:
+
+#this is questionable where this should go - helper file or file that gets stuff from the boss
+def get_chan_img_data(request,coll,exp,channel,x,y,z):
+    base_url, headers = get_boss_request(request,'')
+    headers_blosc = headers
+    headers_blosc['Content-Type']='application/blosc-python'
+
+    cut_url = ret_cut_urls(request,base_url,coll,exp,x,y,z,[channel])[0]
+    r=get_resp_from_boss(request,cut_url,headers_blosc)
+    if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
+        return r
+    data_decomp = blosc.decompress(r.content)
+    
+    ch_metadata = get_ch_metadata(request,coll,exp,channel)
+    ch_datatype = ch_metadata['datatype']
+    data_mat = np.fromstring(data_decomp, dtype=ch_datatype)
+
+    x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
+    #if this is a time series, you need to reshape it differently
+    img_data = np.reshape(data_mat,
+                                (z_rng[1] - z_rng[0],
+                                y_rng[1] - y_rng[0],
+                                x_rng[1] - x_rng[0]),
+                                order='C')
+
+    return img_data
 
 def get_voxel_size(coord_frame):
     x = coord_frame['x_voxel_size']
@@ -453,62 +480,20 @@ def create_voxel_rng(x,y,z):
     z_rng = list(map(int,z.split(':')))
     return x_rng,y_rng,z_rng
 
-def create_tiff_stack(request,coll,exp,x,y,z,channel):
-    base_url, headers = get_boss_request(request,'')
-    cu = ret_cut_urls(request,base_url,coll,exp,x,y,z,[channel])[0]
-
-    x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
-
-    headers_blosc = headers
-    headers_blosc['Content-Type']='application/blosc-python'
-
-    data_mat = get_chan_img_data(request,cu,headers_blosc,coll,exp,channel)
-
-    if data_mat == 'authentication failure' or data_mat == 'incorrect cutout arguments':
-        return data_mat
-
-    #if this is a time series, you need to reshape it differently
-    img_data = np.reshape(data_mat,
-                                (z_rng[1] - z_rng[0],
-                                y_rng[1] - y_rng[0],
-                                x_rng[1] - x_rng[0]),
-                                order='C')
-        
-    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
-    tiff.imsave(fname, img_data)
-    
-    #running out of memory so I am not doing this anymore:
-    # image = tiff.imread(fname)
-    # np.testing.assert_array_equal(image, img_data)
-
-    return fname
-
 def plot_sgram(request,coll,exp,x,y,z,channels):
     base_url, headers = get_boss_request(request,'')
-    cut_urls = ret_cut_urls(request,base_url,coll,exp,x,y,z,channels)
-    
-    x_rng,y_rng,z_rng = create_voxel_rng(x,y,z)
 
     num_ch = len(channels)
-    num_z = z_rng[1] - z_rng[0]
-
-    headers_blosc = headers
-    headers_blosc['Content-Type']='application/blosc-python'
 
     fig=Figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
     #fig=plt.figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
-    for ch_idx,cu in enumerate(cut_urls): #, exception_handler=exception_handler
-        data_mat = get_chan_img_data(request,cu,headers_blosc,coll,exp,channels[ch_idx])
-        #if this is a time series, you need to reshape it differently
-        data_mat_reshape = np.reshape(data_mat,
-                                    (z_rng[1] - z_rng[0],
-                                    y_rng[1] - y_rng[0],
-                                    x_rng[1] - x_rng[0]),
-                                    order='C')
+    for ch_idx,ch in enumerate(channels): #, exception_handler=exception_handler
+        data_mat = get_chan_img_data(request,coll,exp,ch,x,y,z)
 
         #loop over z and plot them across
-        for z_idx in range(data_mat_reshape.shape[0]):
-            B=data_mat_reshape[z_idx,:,:]
+        for z_idx in range(data_mat.shape[0]):
+            B=data_mat[z_idx,:,:]
+            num_z = data_mat.shape[2]
             ax = fig.add_subplot(num_ch,num_z+1,(num_z+1)*(ch_idx) + (z_idx+1))
             #plt.subplot(num_ch,num_z+1,(num_z+1)*(ch_idx) + (z_idx+1))
             ax.imshow(B, cmap='gray')
@@ -518,8 +503,8 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
                 #ax.title('z='+ str(z_idx + z_rng[0]))
             #if z_idx is 0:
                 #ax.ylabel(channels[ch_idx])
-            if z_idx == data_mat_reshape.shape[0]-1:
-                C = np.concatenate(data_mat_reshape,axis=1)
+            if z_idx == data_mat.shape[0]-1:
+                C = np.concatenate(data_mat,axis=1)
                 Csum = np.mean(C,axis=1) / 10e3
 
                 ax1 = fig.add_subplot(num_ch,num_z+1,(num_z+1)*(ch_idx) + (z_idx+1) + 1)
