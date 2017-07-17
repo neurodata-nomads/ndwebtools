@@ -83,8 +83,10 @@ def cutout(request,coll,exp):
         return redirect('/openid/openid/KeyCloak')
 
     #getting the coordinate frame limits for the experiment:
-    exp_meta = get_coordinate_frame(request,coll,exp)
-    #important stuff out of exp_meta:
+    coord_frame = get_coordinate_frame(request,coll,exp)
+    if coord_frame == 'authentication failure':
+        return redirect('/openid/openid/KeyCloak')
+    #important stuff out of coord_frame:
         # "x_start": 0,
         # "x_stop": 1000,
         # "y_start": 0,
@@ -96,7 +98,7 @@ def cutout(request,coll,exp):
     if request.method == 'POST':
         # create a form instance and populate it with data from the request:
 
-        form = CutoutForm(request.POST, channels=channels, limits = exp_meta)
+        form = CutoutForm(request.POST, channels=channels, limits = coord_frame)
         # check whether it's valid:
         if form.is_valid():
             # process the data in form.cleaned_data as required
@@ -131,25 +133,24 @@ def cutout(request,coll,exp):
             form = CutoutForm(channels=channels, 
                 initial={   'x_min':str(x_rng[0]),'y_min':str(y_rng[0]),'z_min':str(z_rng[0]),
                             'x_max':str(x_rng[1]),'y_max':str(y_rng[1]),'z_max':str(z_rng[1])},
-                limits=exp_meta)
+                limits=coord_frame)
         else:
             form = CutoutForm(channels = channels,
-                limits=exp_meta)
+                limits=coord_frame)
     username = get_username(request)
     base_url, headers = get_boss_request(request,'')
-
     for ch in channels:
         ch_metadata=get_ch_metadata(request,coll,exp,ch)
         if ch_metadata['type'] != 'annotation':
             break
-    #https://viz-dev.boss.neurodata.io/#!{'layers':{'image':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ben_dev/sag_left_junk/image'}}_'navigation':{'pose':{'position':{'voxelSize':[4_4_3]_'voxelCoordinates':[1080_1280_1082.5]}}_'zoomFactor':3}}
-    ndviz_url = ret_ndviz_urls(request,base_url,coll,exp,[ch])[0][0]
-    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url, 'exp_meta': sorted(exp_meta.items())}
+    ndviz_url = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,[ch])[0][0]
+    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url, 'coord_frame': sorted(coord_frame.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 @login_required
 def cut_url_list(request):
-    coll,exp,x,y,z,channels = process_params(request)
+    q = request.GET
+    coll,exp,x,y,z,channels = process_params(q)
     
     base_url, headers = get_boss_request(request,'')
     urls = ret_cut_urls(request,base_url,coll,exp,x,y,z,channels)
@@ -161,9 +162,11 @@ def cut_url_list(request):
 
 @login_required
 def ndviz_url_list(request):
-    coll,exp,x,y,z,channels = process_params(request)
+    q = request.GET
+    coll,exp,x,y,z,channels = process_params(q)
     base_url, headers = get_boss_request(request,'')
-    urls, channels_urls, channels_z = ret_ndviz_urls(request,base_url,coll,exp,channels,x,y,z)
+    coord_frame = get_coordinate_frame(request,coll,exp)
+    urls, channels_urls, channels_z = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x,y,z)
 
     channel_ndviz_list = zip(channels_urls, channels_z, urls)
     context = {'channel_ndviz_list': channel_ndviz_list, 'coll':coll, 'exp':exp}
@@ -171,7 +174,8 @@ def ndviz_url_list(request):
 
 @login_required
 def tiff_stack(request):
-    coll,exp,x,y,z,channels = process_params(request)
+    q = request.GET
+    coll,exp,x,y,z,channels = process_params(q)
 
     urls=[]
     for ch in channels:
@@ -197,7 +201,8 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
 
 @login_required
 def sgram(request):
-    coll,exp,x,y,z,channels = process_params(request)
+    q = request.GET
+    coll,exp,x,y,z,channels = process_params(q)
     return plot_sgram(request,coll,exp,x,y,z,channels)
 
 @login_required
@@ -208,7 +213,6 @@ def sgram_from_ndviz(request):
     if coll == 'incorrect source':
         return redirect('synaptogram:coll_list')
     elif coll == 'authentication failure':
-        # request.session['next'] = 'synaptogram:coll_list'
         return redirect('/openid/openid/KeyCloak')
     
     #go to form to let user decide what they want to do
@@ -218,6 +222,42 @@ def sgram_from_ndviz(request):
     return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)) + params)
     #redirect('synaptogram:cutout', coll=coll,exp=exp) 
 
+@login_required
+def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
+    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z))).replace(':','_') + '.zip'
+    
+    channels = channels.split(',')
+
+    try:
+        os.remove(fname)
+    except OSError:
+        pass
+
+    with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
+        for ch in channels:
+            fn = create_tiff_stack(request,coll,exp,x,y,z,ch)
+
+            if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
+                return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
+            myzip.write(fn)
+
+    response = FileResponse(open(fname, 'rb'))
+    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
+    return response
+
+def set_sess_exp(request):
+    id_token = request.session.get('id_token')
+    epoch_time_KC = id_token['exp']
+    epoch_time_loc = round(time.time()) # + time.timezone
+    new_exp_time = epoch_time_KC - epoch_time_loc
+    if new_exp_time < 0: #this really shouldn't happen because we expire sessions now
+        return 'expire time in past'
+    else:
+        request.session.set_expiry(new_exp_time)
+        return 0
+
+def get_username(request):
+    return request.session.get('userinfo')['name']
 
 
 
@@ -328,7 +368,7 @@ def get_voxel_size(coord_frame):
     z = coord_frame['z_voxel_size']
     return [x,y,z]
 
-def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
+def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
@@ -337,8 +377,6 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
     channels_z=[]
     ndviz_base = 'https://viz-dev.boss.neurodata.io/'
     boss_url = 'https://api.boss.neurodata.io/'
-
-    coord_frame = get_coordinate_frame(request,coll,exp)
     #error check
 
     xyz_voxel_size = get_voxel_size(coord_frame)
@@ -357,7 +395,8 @@ def ret_ndviz_urls(request,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1
             '\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[' + 
             '_'.join(map(str,xyz_voxel_size))
             + ']_\'voxelCoordinates\':[' +
-            x.split(':')[0] + '_' + y.split(':')[0] + '_' + str(z_val)
+            str(round((sum(list(map(int,x.split(':'))))-1)/2)) + '_' + 
+            str(round((sum(list(map(int,y.split(':'))))-1)/2)) + '_' + str(z_val)
             + ']}}_\'zoomFactor\':20}}')
             channels_urls.append(ch)
             channels_z.append(str(z_val))
@@ -375,20 +414,6 @@ def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
             window=''
         cut_urls.append(base_url + JJ + '/' + window)
     return cut_urls
-
-def set_sess_exp(request):
-    id_token = request.session.get('id_token')
-    epoch_time_KC = id_token['exp']
-    epoch_time_loc = round(time.time()) # + time.timezone
-    new_exp_time = epoch_time_KC - epoch_time_loc
-    if new_exp_time < 0: #this really shouldn't happen because we expire sessions now
-        return 'expire time in past'
-    else:
-        request.session.set_expiry(new_exp_time)
-        return 0
-
-def get_username(request):
-    return request.session.get('userinfo')['name']
 
 def error_check_int_param(vals):
     split_val=vals.split(':')
@@ -409,9 +434,7 @@ def xyz_from_params(q):
     z = error_check_int_param(q.get('z'))
     return x,y,z
 
-def process_params(request):
-    q = request.GET
-    
+def process_params(q):
     #validation / data sanitization needed here because it's not being done in the form
     # x_rng_str = q.get('x')
 
@@ -429,28 +452,6 @@ def create_voxel_rng(x,y,z):
     y_rng = list(map(int,y.split(':')))
     z_rng = list(map(int,z.split(':')))
     return x_rng,y_rng,z_rng
-
-def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
-    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z))).replace(':','_') + '.zip'
-    
-    channels = channels.split(',')
-
-    try:
-        os.remove(fname)
-    except OSError:
-        pass
-
-    with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
-        for ch in channels:
-            fn = create_tiff_stack(request,coll,exp,x,y,z,ch)
-
-            if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
-                return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
-            myzip.write(fn)
-
-    response = FileResponse(open(fname, 'rb'))
-    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
-    return response
 
 def create_tiff_stack(request,coll,exp,x,y,z,channel):
     base_url, headers = get_boss_request(request,'')
@@ -537,7 +538,7 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
     canvas.print_png(response)
     return response
 
-def parse_ndviz_url(request, url):
+def parse_ndviz_url(request,url):
     #example URL:
     #"https://viz-dev.boss.neurodata.io/#!{'layers':{'CR1_2ndA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/CR1_2ndA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[657.4783325195312_1069.4876708984375_11]}}_'zoomFactor':69.80685914923684}}"
     split_url = url.split('/')
@@ -561,10 +562,11 @@ def parse_ndviz_url(request, url):
     xyz_float = xyz.split('_')
     xyz_int = [int(float(p)) for p in xyz_float]
 
-    #convert the units from ndviz to boss units
+
     coord_frame = get_coordinate_frame(request,coll,exp)
     if coord_frame == 'authentication failure':
-        return 'authentication failure', None, None, None, None
+        return coord_frame, None, None, None, None
+    #convert the units from ndviz to boss units
     xyz_int = ndviz_units_to_boss(coord_frame, xyz_voxel_float, xyz_int)
 
     #creates the string param that using now - these will be integer lists at some point
