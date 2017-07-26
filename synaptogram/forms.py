@@ -24,10 +24,9 @@ class CutoutForm(forms.Form):
         self.fields['z_max'] = forms.IntegerField(label='z_max',min_value=limits['z_start'],max_value=limits['z_stop'])
 
     next_action = (
-        ('sgram','Synaptogram'),
         ('ndviz','Neurodata Viz links per channel'),
         ('tiff_stack','Download TIFF stack per channel'),
-        # ('cut_urls','Cut URLS per channel'),
+        ('sgram','Synaptogram'),
         )
     endpoint = forms.ChoiceField(label='Return:',choices=next_action, 
         widget=forms.RadioSelect())

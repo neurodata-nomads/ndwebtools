@@ -83,3 +83,9 @@ body {
 .tooltip:hover .tooltiptext {
     visibility: visible;
 }
+
+p#coord_frame_data{
+    position: absolute;
+    right:15px;
+    top:110px;
+}
