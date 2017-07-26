@@ -84,8 +84,15 @@ body {
     visibility: visible;
 }
 
-p#coord_frame_data{
+#coord_frame_data{
     position: absolute;
     right:15px;
-    top:110px;
+    top:120px;
+    background-color: #cce6ff;
+    z-index: -1
+}
+
+#coord_frame_data table{
+    max-width: 300px;
+    width: 100%
 }

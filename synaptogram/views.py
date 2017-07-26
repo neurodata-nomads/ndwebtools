@@ -54,7 +54,7 @@ def coll_list(request):
     request.session['next'] = 'synaptogram:coll_list'
     if resp == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
-    collections = resp['collections']
+    collections = sorted(resp['collections'], key=str.lower)
     username = get_username(request)
     context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html',context)
@@ -67,7 +67,7 @@ def exp_list(request,coll):
     request.session['next'] = '/exp_list/' + coll
     if resp == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
-    experiments = resp['experiments']
+    experiments = sorted(resp['experiments'], key=str.lower)
 
     username = get_username(request)
     context = {'coll': coll, 'experiments': experiments, 'username': username}

@@ -16,7 +16,7 @@
 
 <a href="{{ ndviz_url }}" target="_blank">NDViz link to first non-annotation channel</a>
 
-<p id="coord_frame_data">
+<div id="coord_frame_data">
 Coordinate frame data:
 <table border="1">
 {% for key,val in coord_frame %}
@@ -26,7 +26,7 @@ Coordinate frame data:
     </tr>
 {% endfor %}
 </table>
-</p>
+</div>
 
 <p>
 <form action="{% url 'synaptogram:cutout' coll exp %}" method="post">
