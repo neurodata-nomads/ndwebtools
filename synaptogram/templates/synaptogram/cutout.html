@@ -12,21 +12,19 @@
 </script>
 
 
-<h2>Set the cutout range</h2>
+<h2>Set the cutout range:</h2>
+
+<p><span class="bold">Collection:</span>
+{{ coll }}
+</p>
+
+<p><span class="bold">Experiment:</span>
+{{ exp }}
+</p>
 
 <a href="{{ ndviz_url }}" target="_blank">NDViz link to first non-annotation channel</a>
 
-<div id="coord_frame_data">
-Coordinate frame data:
-<table border="1">
-{% for key,val in coord_frame %}
-    <tr>
-    <td>{{key}}</td>
-    <td>{{val}}</td>
-    </tr>
-{% endfor %}
-</table>
-</div>
+{% include 'synaptogram/coord_frame_detail.html' %}
 
 <p>
 <form action="{% url 'synaptogram:cutout' coll exp %}" method="post">
