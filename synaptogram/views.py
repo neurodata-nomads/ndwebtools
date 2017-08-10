@@ -24,6 +24,7 @@ from matplotlib.figure import Figure
 #import png
 #from PIL import Image
 
+from io import BytesIO
 import tifffile as tiff
 import zipfile
 import os
@@ -191,15 +192,15 @@ def tiff_stack(request):
 
 @login_required
 def tiff_stack_channel(request,coll,exp,x,y,z,channel):
-    img_data = get_chan_img_data(request,coll,exp,channel,x,y,z)
+    img_data, cut_url = get_chan_img_data(request,coll,exp,channel,x,y,z)
     if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
         return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
+    obj = BytesIO()
+    tiff.imsave(obj, img_data, metadata={'cut_url': cut_url})
 
-    fname = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
-    tiff.imsave(fname, img_data)
-
-    response = FileResponse(open(fname, 'rb'),content_type='image/TIFF')
-    response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
+    fname = '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
+    response = FileResponse(obj,content_type='image/TIFF')
+    response['Content-Disposition'] = 'attachment; filename="' + fname + '"'
     return response
 
 @login_required
@@ -215,18 +216,17 @@ def zip_tiff_stacks(request,coll,exp,x,y,z,channels):
 
     with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
         for ch in channels:
-            img_data = get_chan_img_data(request,coll,exp,ch,x,y,z)
-            
+            img_data, cut_url = get_chan_img_data(request,coll,exp,ch,x,y,z)
+            if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
+                raise Exception
             fn = 'media/' + '_'.join((coll,exp,str(x),str(y),str(z),ch)).replace(':','_') + '.tiff'
-            tiff.imsave(fn, img_data)
+            tiff.imsave(fn, img_data, metadata={'cut_url': cut_url})
             
             #running out of memory so I am not doing this anymore:
             # image = tiff.imread(fname)
             # np.testing.assert_array_equal(image, img_data)
 
-            if fn == 'authentication failure' or fn == 'incorrect cutout arguments':
-                return redirect( reverse('synaptogram:cutout',args=(coll,exp)))
-            myzip.write(fn)
+            myzip.write(fn, arcname=fn.strip('media/'))
 
     response = FileResponse(open(fname, 'rb'))
     response['Content-Disposition'] = 'attachment; filename="' + fname.strip('media/') + '"'
@@ -372,7 +372,7 @@ def get_chan_img_data(request,coll,exp,channel,x,y,z):
     cut_url = ret_cut_urls(request,base_url,coll,exp,x,y,z,[channel])[0]
     r=get_resp_from_boss(request,cut_url,headers_blosc)
     if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
-        return r
+        return r, cut_url
     data_decomp = blosc.decompress(r.content)
     
     ch_metadata = get_ch_metadata(request,coll,exp,channel)
@@ -387,7 +387,7 @@ def get_chan_img_data(request,coll,exp,channel,x,y,z):
                                 x_rng[1] - x_rng[0]),
                                 order='C')
 
-    return img_data
+    return img_data, cut_url
 
 def get_voxel_size(coord_frame):
     x = coord_frame['x_voxel_size']
@@ -488,7 +488,7 @@ def plot_sgram(request,coll,exp,x,y,z,channels):
     fig=Figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
     #fig=plt.figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
     for ch_idx,ch in enumerate(channels): #, exception_handler=exception_handler
-        data_mat = get_chan_img_data(request,coll,exp,ch,x,y,z)
+        data_mat, _ = get_chan_img_data(request,coll,exp,ch,x,y,z)
 
         #loop over z and plot them across
         for z_idx in range(data_mat.shape[0]):
