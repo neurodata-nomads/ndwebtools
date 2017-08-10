@@ -199,7 +199,7 @@ def tiff_stack_channel(request,coll,exp,x,y,z,channel):
     tiff.imsave(obj, img_data, metadata={'cut_url': cut_url})
 
     fname = '_'.join((coll,exp,str(x),str(y),str(z),channel)).replace(':','_') + '.tiff'
-    response = FileResponse(obj,content_type='image/TIFF')
+    response = HttpResponse(obj.getvalue(), content_type='image/TIFF')
     response['Content-Disposition'] = 'attachment; filename="' + fname + '"'
     return response
 
