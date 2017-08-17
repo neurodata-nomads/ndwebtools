@@ -14,12 +14,11 @@
 
 <h2>Set the cutout range:</h2>
 
-<p><span class="bold">Collection:</span>
-{{ coll }}
-</p>
+{% include 'synaptogram/coll_link.html' %}
 
 <p><span class="bold">Experiment:</span>
-{{ exp }}
+<!-- https://api.boss.neurodata.io/v1/mgmt/resources/collman/collman14v2 -->
+<a href="https://api.boss.neurodata.io/v1/mgmt/resources/{{coll}}/{{exp}}" target="blank">{{ exp }}</a>
 </p>
 
 <a href="{{ ndviz_url }}" target="_blank">NDViz link to all channels</a>
