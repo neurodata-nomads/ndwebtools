@@ -141,12 +141,8 @@ def cutout(request,coll,exp):
                 limits=coord_frame)
     username = get_username(request)
     base_url, headers = get_boss_request(request,'')
-    for ch in channels:
-        ch_metadata=get_ch_metadata(request,coll,exp,ch)
-        if ch_metadata['type'] != 'annotation':
-            break
-    ndviz_url = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,[ch])[0][0]
-    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url, 'coord_frame': sorted(coord_frame.items())}
+    ndviz_url, _ = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels)
+    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url[0], 'coord_frame': sorted(coord_frame.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 @login_required
@@ -168,9 +164,9 @@ def ndviz_url_list(request):
     coll,exp,x,y,z,channels = process_params(q)
     base_url, headers = get_boss_request(request,'')
     coord_frame = get_coordinate_frame(request,coll,exp)
-    urls, channels_urls, channels_z = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x,y,z)
+    urls, z_vals = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x,y,z)
 
-    channel_ndviz_list = zip(channels_urls, channels_z, urls)
+    channel_ndviz_list = zip(z_vals, urls)
     context = {'channel_ndviz_list': channel_ndviz_list, 'coll':coll, 'exp':exp}
     return render(request, 'synaptogram/ndviz_url_list.html',context)
 
@@ -395,39 +391,56 @@ def get_voxel_size(coord_frame):
     z = coord_frame['z_voxel_size']
     return [x,y,z]
 
-def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x='0:100',y='0:100',z='0:1'):
+def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x=None,y=None,z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
-    ndviz_urls=[]
-    channels_urls=[]
-    channels_z=[]
     ndviz_base = 'https://viz-dev.boss.neurodata.io/'
     boss_url = 'https://api.boss.neurodata.io/'
     #error check
 
+    if x is None:
+        x = ':'.join( list(map(str, (coord_frame['x_start'], coord_frame['x_stop']))))
+    if y is None:
+        y = ':'.join( list(map(str, (coord_frame['y_start'], coord_frame['y_stop']))))
+
     xyz_voxel_size = get_voxel_size(coord_frame)
     
-    for ch in channels:
-        z_rng = list(map(int,z.split(':')))
-        ch_metadata = get_ch_metadata(request,coll,exp,ch)
-        if ch_metadata['datatype'] == 'uint16':
-            window='?window=0,10000'
-        else:
-            window=''
-        for z_val in range(z_rng[0],z_rng[1]):
-            ndviz_urls.append(ndviz_base + '#!{\'layers\':{\'' + ch + 
-            '\':{\'type\':\'image\'_\'source\':\'boss://' + boss_url
-            + coll +'/'+ exp + '/' + ch + window +
-            '\'}}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[' + 
-            '_'.join(map(str,xyz_voxel_size))
-            + ']_\'voxelCoordinates\':[' +
-            str(round((sum(list(map(int,x.split(':'))))-1)/2)) + '_' + 
-            str(round((sum(list(map(int,y.split(':'))))-1)/2)) + '_' + str(z_val)
-            + ']}}_\'zoomFactor\':20}}')
-            channels_urls.append(ch)
-            channels_z.append(str(z_val))
-    return ndviz_urls, channels_urls, channels_z
+    ndviz_urls=[]
+    z_vals=[]
+    z_rng = list(map(int,z.split(':')))
+    for z_val in range(z_rng[0],z_rng[1]):
+        ch_viz_links=[]
+        for ch_indx, ch in enumerate(channels):
+            ch_metadata = get_ch_metadata(request,coll,exp,ch)
+            if ch_metadata['datatype'] == 'uint16':
+                window='window=0,10000'
+            else:
+                window=''
+            if ch_metadata['type'] == 'image':
+                chan_type = 'image'
+            else:
+                chan_type = 'segmentation'
+            
+            col_idx = str(ch_indx % 7) #7 colors supported by ndviz
+            opacity=''
+            if ch_indx > 0:
+                # 'opacity':0.5
+                opacity = '_\'opacity\':0.5'
+
+            #{'ch0':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch0?window=0,10000'_'color':2}_'ch1':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch1'_'opacity':0.45_'color':1}}
+            ch_link = ''.join(('\'', ch, '\':{\'type\':\'', chan_type, '\'_\'source\':\'boss://', boss_url, coll, '/', exp, '/', ch, '?', window, '\'', opacity, '_\'color\':', col_idx, '}'))
+            ch_viz_links.append(ch_link)
+
+        ndviz_urls.append(ndviz_base + '#!{\'layers\':{' + '_'.join(ch_viz_links)
+        + '}_\'navigation\':{\'pose\':{\'position\':{\'voxelSize\':[' + 
+        '_'.join(map(str,xyz_voxel_size))
+        + ']_\'voxelCoordinates\':[' +
+        str(round((sum(list(map(int,x.split(':'))))-1)/2)) + '_' + 
+        str(round((sum(list(map(int,y.split(':'))))-1)/2)) + '_' + str(z_val)
+        + ']}}_\'zoomFactor\':40}}')
+        z_vals.append(str(z_val))
+    return ndviz_urls, z_vals
 
 def ret_cut_urls(request,base_url,coll,exp,x,y,z,channels):
     res=0
