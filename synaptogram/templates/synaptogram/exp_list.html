@@ -4,9 +4,7 @@
 
 <h2>Experiment list</h2>
 
-<p><span class="bold">Collection:</span>
-{{ coll }}
-</p>
+{% include 'synaptogram/coll_link.html' %}
 
 <ul>
 {% for exp in experiments %}
