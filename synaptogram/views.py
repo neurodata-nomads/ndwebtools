@@ -158,6 +158,14 @@ def cut_url_list(request):
     context = {'channel_cut_list': channel_cut_list, 'coll':coll, 'exp':exp}
     return render(request, 'synaptogram/cut_url_list.html',context)
 
+# this generates an ndviz url for the channel/experiment/collection as inputs
+@login_required
+def ndviz_url(request, coll, exp, channel):
+    base_url, headers = get_boss_request(request,'')
+    coord_frame = get_coordinate_frame(request,coll,exp)
+    url, _ = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,[channel])
+    return HttpResponse('<a href="' + url[0] + '">NDViz URL</a>')
+
 @login_required
 def ndviz_url_list(request):
     q = request.GET

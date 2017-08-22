@@ -1,9 +1,9 @@
-Django==1.11.3
-requests==2.11.1
-matplotlib==2.0.2
-numpy==1.13.1
-blosc==1.4.4
-tifffile==0.12.1
+Django>=1.11.3
+requests>=2.11.1
+matplotlib>=2.0.2
+numpy>=1.13.1
+blosc>=1.4.4
+tifffile>=0.12.1
 -e git+https://github.com/jhuapl-boss/django-oidc.git#egg=django-oidc
 -e git+https://github.com/jhuapl-boss/drf-oidc-auth.git#egg=drf-oidc-auth
 -e git+https://github.com/jhuapl-boss/boss-oidc.git#egg=boss-oidc
