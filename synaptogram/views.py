@@ -164,7 +164,7 @@ def ndviz_url(request, coll, exp, channel):
     base_url, headers = get_boss_request(request,'')
     coord_frame = get_coordinate_frame(request,coll,exp)
     url, _ = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,[channel])
-    return HttpResponse('<a href="' + url[0] + '">NDViz URL</a>')
+    return HttpResponse('<META http-equiv="refresh" content=".1;URL='+ url[0] + '">')
 
 @login_required
 def ndviz_url_list(request):
