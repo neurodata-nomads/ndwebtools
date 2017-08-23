@@ -1,3 +1,9 @@
+import time
+import re
+import zipfile
+import os
+from io import BytesIO
+
 import requests
 
 from django.shortcuts import get_object_or_404, render, redirect
@@ -9,30 +15,16 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.contrib import messages
 
-import time
-
-from .forms import CutoutForm
+import blosc
+import tifffile as tiff
 
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-#import png
-#from PIL import Image
-
-from io import BytesIO
-import tifffile as tiff
-import zipfile
-import os
-from wsgiref.util import FileWrapper
-
-import blosc
-
-import re
+from .forms import CutoutForm
 
 
 
@@ -164,7 +156,7 @@ def ndviz_url(request, coll, exp, channel):
     base_url, headers = get_boss_request(request,'')
     coord_frame = get_coordinate_frame(request,coll,exp)
     url, _ = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,[channel])
-    return HttpResponse('<a href="' + url[0] + '">NDViz URL</a>')
+    return HttpResponse('<META http-equiv="refresh" content=".1;URL='+ url[0] + '">')
 
 @login_required
 def ndviz_url_list(request):
@@ -399,11 +391,33 @@ def get_voxel_size(coord_frame):
     z = coord_frame['z_voxel_size']
     return [x,y,z]
 
+def ret_ndviz_channel_part(boss_url, ch_metadata, coll, exp, ch, ch_indx=0):
+    if ch_metadata['datatype'] == 'uint16':
+        window='window=0,10000'
+    else:
+        window=''
+    if ch_metadata['type'] == 'image':
+        chan_type = 'image'
+    else:
+        chan_type = 'segmentation'
+    
+    col_idx = str(ch_indx % 7) #7 colors supported by ndviz including white
+    opacity=''
+    if ch_indx > 0:
+        # 'opacity':0.5
+        opacity = '_\'opacity\':0.5'
+
+    #{'ch0':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch0?window=0,10000'_'color':2}_'ch1':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch1'_'opacity':0.45_'color':1}}
+    ch_link = ''.join(('\'', ch, '\':{\'type\':\'', chan_type, '\'_\'source\':\'boss://', 
+                      boss_url, coll, '/', exp, '/', ch, '?', window, '\'', opacity, '_\'color\':', 
+                      col_idx, '}'))
+    return ch_link
+
 def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x=None,y=None,z='0:1'):
     #https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     #unescaped by: http://www.utilities-online.info/urlencode/
     #https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
-    ndviz_base = 'https://viz-dev.boss.neurodata.io/'
+    ndviz_base = 'https://viz.boss.neurodata.io/'
     boss_url = 'https://api.boss.neurodata.io/'
     #error check
 
@@ -421,23 +435,7 @@ def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x=None,y=None,
         ch_viz_links=[]
         for ch_indx, ch in enumerate(channels):
             ch_metadata = get_ch_metadata(request,coll,exp,ch)
-            if ch_metadata['datatype'] == 'uint16':
-                window='window=0,10000'
-            else:
-                window=''
-            if ch_metadata['type'] == 'image':
-                chan_type = 'image'
-            else:
-                chan_type = 'segmentation'
-            
-            col_idx = str(ch_indx % 7) #7 colors supported by ndviz
-            opacity=''
-            if ch_indx > 0:
-                # 'opacity':0.5
-                opacity = '_\'opacity\':0.5'
-
-            #{'ch0':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch0?window=0,10000'_'color':2}_'ch1':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch1'_'opacity':0.45_'color':1}}
-            ch_link = ''.join(('\'', ch, '\':{\'type\':\'', chan_type, '\'_\'source\':\'boss://', boss_url, coll, '/', exp, '/', ch, '?', window, '\'', opacity, '_\'color\':', col_idx, '}'))
+            ch_link = ret_ndviz_channel_part(boss_url, ch_metadata, coll, exp, ch, ch_indx)
             ch_viz_links.append(ch_link)
 
         ndviz_urls.append(ndviz_base + '#!{\'layers\':{' + '_'.join(ch_viz_links)
