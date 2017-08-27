@@ -32,12 +32,12 @@ INSTALLED_APPS = [
     'djangooidc',
 ]
 
-AUTHENTICATION_BACKENDS = (  
+AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
     'bossoidc.backend.OpenIdConnectBackend',
 )
 
-#local_settings.py contains:
+# local_settings.py contains:
 # SECRET_KEY
 # DEBUG
 # ALLOWED_HOSTS
@@ -131,4 +131,4 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 STATIC_URL = '/static/'
-
+STATIC_ROOT = os.path.join(BASE_DIR, "static/")
