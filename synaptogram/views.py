@@ -546,7 +546,7 @@ def parse_ndviz_url(request,url):
     #example URL:
     #"https://viz-dev.boss.neurodata.io/#!{'layers':{'CR1_2ndA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/CR1_2ndA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[657.4783325195312_1069.4876708984375_11]}}_'zoomFactor':69.80685914923684}}"
     split_url = url.split('/')
-    if split_url[2] != 'viz-dev.boss.neurodata.io':
+    if split_url[2] != 'viz-dev.boss.neurodata.io' and split_url[2] != 'viz.boss.neurodata.io':
         return 'incorrect source', None, None, None, None
     coll = split_url[8]
     exp = split_url[9]
