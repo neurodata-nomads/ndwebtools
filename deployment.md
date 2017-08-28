@@ -20,6 +20,7 @@
     - mysite_nginx.conf
         ```apacheconf
         # mysite_nginx.conf
+
         # the upstream component nginx needs to connect to
         upstream django {
             server unix:///home/ubuntu/uwsgi-ndwebtools/ndwebtools/mysite.sock; # for a file socket
@@ -50,6 +51,16 @@
             location / {
                 uwsgi_pass  django;
                 include     /home/ubuntu/uwsgi-ndwebtools/ndwebtools/uwsgi_params; # the uwsgi_params file you installed
+            }
+        }
+
+        #keycloak was set up for 8001 so this is how we respond to port 80 requests
+        server {
+            listen       80;
+            server_name  ben-dev.neurodata.io;
+
+            location / {
+                proxy_pass http://127.0.0.1:8001;
             }
         }
         ```

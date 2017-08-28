@@ -407,10 +407,14 @@ def ret_ndviz_channel_part(boss_url, ch_metadata, coll, exp, ch, ch_indx=0):
         # 'opacity':0.5
         opacity = '_\'opacity\':0.5'
 
+    visible_option = ''
+    if ch_indx > 2:
+        visible_option = '_\'visible\':false'
+
     #{'ch0':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch0?window=0,10000'_'color':2}_'ch1':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch1'_'opacity':0.45_'color':1}}
     ch_link = ''.join(('\'', ch, '\':{\'type\':\'', chan_type, '\'_\'source\':\'boss://', 
                       boss_url, coll, '/', exp, '/', ch, '?', window, '\'', opacity, '_\'color\':', 
-                      col_idx, '}'))
+                      col_idx, visible_option, '}'))
     return ch_link
 
 def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x=None,y=None,z='0:1'):

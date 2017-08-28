@@ -18,10 +18,10 @@
 
 <p><span class="bold">Experiment:</span>
 <!-- https://api.boss.neurodata.io/v1/mgmt/resources/collman/collman14v2 -->
-<a href="https://api.boss.neurodata.io/v1/mgmt/resources/{{coll}}/{{exp}}" target="blank">{{ exp }}</a>
+{{ exp }} (<a href="https://api.boss.neurodata.io/v1/mgmt/resources/{{coll}}/{{exp}}" target="blank">manage</a>)
 </p>
 
-<a href="{{ ndviz_url }}" target="_blank">NDViz link to all channels</a>
+<a href="{{ ndviz_url }}" target="_blank">NDViz</a> for all channels (all but the first 3 disabled)
 
 {% include 'synaptogram/coord_frame_detail.html' %}
 
