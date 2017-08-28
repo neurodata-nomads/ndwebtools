@@ -579,7 +579,7 @@ def parse_ndviz_url(request,url):
     #creates the string param that using now - these will be integer lists at some point
     x,y,z = [(str(p-5) + ':' + str(p+5)) for p in xyz_int]
 
-    return coll,exp,x,y,z
+    return coll,exp,x,y,z,s
 
 #we need to do this in case the user specified wrong voxel units in the ndviz url
 def ndviz_units_to_boss(coord_frame,ndviz_voxel,xyz_int):
