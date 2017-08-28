@@ -407,10 +407,14 @@ def ret_ndviz_channel_part(boss_url, ch_metadata, coll, exp, ch, ch_indx=0):
         # 'opacity':0.5
         opacity = '_\'opacity\':0.5'
 
+    visible_option = ''
+    if ch_indx > 2:
+        visible_option = '_\'visible\':false'
+
     #{'ch0':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch0?window=0,10000'_'color':2}_'ch1':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/ailey-dev/Th1eYFP_control_12/ch1'_'opacity':0.45_'color':1}}
     ch_link = ''.join(('\'', ch, '\':{\'type\':\'', chan_type, '\'_\'source\':\'boss://', 
                       boss_url, coll, '/', exp, '/', ch, '?', window, '\'', opacity, '_\'color\':', 
-                      col_idx, '}'))
+                      col_idx, visible_option, '}'))
     return ch_link
 
 def ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels,x=None,y=None,z='0:1'):
@@ -550,18 +554,17 @@ def parse_ndviz_url(request,url):
         return 'incorrect source', None, None, None, None
     coll = split_url[8]
     exp = split_url[9]
-    params = split_url[10]
 
     #incorporate the zoom factor when generating synaptogram from bookmarklet
     #not currently implemented
-    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",params)
+    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",url)
     zoom = int(float(match_zoom.group()))
 
-    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",params)
+    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",url)
     xyz_voxel = match_xyz_voxel.group()
     xyz_voxel_float = xyz_voxel.split('_')
 
-    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",params)
+    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",url)
     xyz = match_xyz.group()
     xyz_float = xyz.split('_')
     xyz_int = [int(float(p)) for p in xyz_float]

@@ -14,14 +14,14 @@ class CutoutForm(forms.Form):
         # self.fields['channels'] = forms.ChoiceField(label='Channels',
         #     choices=[(c, c) for c in CHOICES])
         
-        self.fields['x_min'] = forms.IntegerField(label='x_min',min_value=limits['x_start'],max_value=limits['x_stop'])
-        self.fields['x_max'] = forms.IntegerField(label='x_max',min_value=limits['x_start'],max_value=limits['x_stop'])
+        self.fields['x_min'] = forms.IntegerField(label='x_min',min_value=limits['x_start'],max_value=limits['x_stop'], initial=limits['x_start'])
+        self.fields['x_max'] = forms.IntegerField(label='x_max',min_value=limits['x_start'],max_value=limits['x_stop'], initial=limits['x_stop'])
 
-        self.fields['y_min'] = forms.IntegerField(label='y_min',min_value=limits['y_start'],max_value=limits['y_stop'])
-        self.fields['y_max'] = forms.IntegerField(label='y_max',min_value=limits['y_start'],max_value=limits['y_stop'])
+        self.fields['y_min'] = forms.IntegerField(label='y_min',min_value=limits['y_start'],max_value=limits['y_stop'], initial=limits['y_start'])
+        self.fields['y_max'] = forms.IntegerField(label='y_max',min_value=limits['y_start'],max_value=limits['y_stop'], initial=limits['y_stop'])
     
-        self.fields['z_min'] = forms.IntegerField(label='z_min',min_value=limits['z_start'],max_value=limits['z_stop'])
-        self.fields['z_max'] = forms.IntegerField(label='z_max',min_value=limits['z_start'],max_value=limits['z_stop'])
+        self.fields['z_min'] = forms.IntegerField(label='z_min',min_value=limits['z_start'],max_value=limits['z_stop'], initial=0)
+        self.fields['z_max'] = forms.IntegerField(label='z_max',min_value=limits['z_start'],max_value=limits['z_stop'], initial=limits['z_stop'])
 
     next_action = (
         ('ndviz','Neurodata Viz links per channel'),
