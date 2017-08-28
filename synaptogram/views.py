@@ -554,18 +554,17 @@ def parse_ndviz_url(request,url):
         return 'incorrect source', None, None, None, None
     coll = split_url[8]
     exp = split_url[9]
-    params = split_url[10]
 
     #incorporate the zoom factor when generating synaptogram from bookmarklet
     #not currently implemented
-    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",params)
+    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",url)
     zoom = int(float(match_zoom.group()))
 
-    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",params)
+    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",url)
     xyz_voxel = match_xyz_voxel.group()
     xyz_voxel_float = xyz_voxel.split('_')
 
-    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",params)
+    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",url)
     xyz = match_xyz.group()
     xyz_float = xyz.split('_')
     xyz_int = [int(float(p)) for p in xyz_float]

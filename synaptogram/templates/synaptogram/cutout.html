@@ -26,6 +26,8 @@
 {% include 'synaptogram/coord_frame_detail.html' %}
 
 <p>
+    Cutout parameters:
+</p>
 <form action="{% url 'synaptogram:cutout' coll exp %}" method="post">
     {% csrf_token %}
     <table>
