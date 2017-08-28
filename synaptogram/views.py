@@ -554,18 +554,17 @@ def parse_ndviz_url(request,url):
         return 'incorrect source', None, None, None, None
     coll = split_url[8]
     exp = split_url[9]
-    params = split_url[10]
 
     #incorporate the zoom factor when generating synaptogram from bookmarklet
     #not currently implemented
-    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",params)
+    match_zoom = re.search(r"(?<=zoomFactor':).*?(?=})",url)
     zoom = int(float(match_zoom.group()))
 
-    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",params)
+    match_xyz_voxel = re.search(r"(?<=voxelSize':\[).*?(?=\])",url)
     xyz_voxel = match_xyz_voxel.group()
     xyz_voxel_float = xyz_voxel.split('_')
 
-    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",params)
+    match_xyz = re.search(r"(?<=voxelCoordinates':\[).*?(?=\]}}_'zoom)",url)
     xyz = match_xyz.group()
     xyz_float = xyz.split('_')
     xyz_int = [int(float(p)) for p in xyz_float]
@@ -580,7 +579,7 @@ def parse_ndviz_url(request,url):
     #creates the string param that using now - these will be integer lists at some point
     x,y,z = [(str(p-5) + ':' + str(p+5)) for p in xyz_int]
 
-    return coll,exp,x,y,z
+    return coll,exp,x,y,z,s
 
 #we need to do this in case the user specified wrong voxel units in the ndviz url
 def ndviz_units_to_boss(coord_frame,ndviz_voxel,xyz_int):
