@@ -251,6 +251,31 @@ def sgram_from_ndviz(request):
     return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)) + params)
     #redirect('synaptogram:cutout', coll=coll,exp=exp) 
 
+@login_required
+def downsample(request, coll, exp, channel):
+    add_url = 'downsample/' + '/'.join((coll, exp, channel))
+    url, headers = get_boss_request(request, add_url)
+    r = requests.post(url, headers = headers)
+    if r.status_code != 201:
+        print("Error: Request failed!")
+        print("Received {} from server.".format(r.status_code))
+    else:
+        print("Downsample request sent for {}".format(url))
+    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)))
+
+@login_required
+def downsample_del(request, coll, exp, channel):
+    add_url = 'downsample/' + '/'.join((coll, exp, channel))
+    url, headers = get_boss_request(request, add_url)
+    r = requests.delete(url, headers = headers)
+    if r.status_code != 204: #409 is the error if res. not found
+        print("Error: Request failed!")
+        print("Received {} from server.".format(r.status_code))
+        #add messages.error
+    else:
+        print("Downsample delete request sent for {}".format(url))
+    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll, exp)))
+
 def set_sess_exp(request):
     id_token = request.session.get('id_token')
     epoch_time_KC = id_token['exp']

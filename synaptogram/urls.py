@@ -20,4 +20,8 @@ urlpatterns = [
     url(r'^zip_tiff_stacks/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<x>[-\w:]+)/(?P<y>[-\w:]+)/(?P<z>[-\w:]+)/(?P<channels>[-\w,]+)/$',
         views.zip_tiff_stacks, name='zip_tiff_stacks'),
     url(r'^sgram_from_ndviz/$', views.sgram_from_ndviz, name='sgram_from_ndviz'),
+    url(r'^downsample/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<channel>[-\w]+)/$',
+        views.downsample, name='downsample'),
+    url(r'^downsample_del/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<channel>[-\w]+)/$',
+        views.downsample_del, name='downsample_del'),
 ]
