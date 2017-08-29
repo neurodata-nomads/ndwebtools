@@ -1,20 +1,28 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
-<h1>Welcome to the Neurodata Boss web application</h1>
+<h1>Welcome to NeuroData web tools</h1>
 
 <p>
-This application provides a TIFF image cutout service for the Boss.  It also provides a linking service to existing vizualization tools.
+This application provides web services for <a href="https://neurodata.io">NeuroData</a>
 </p>
 
-<p>
+<p>Current features:
+    <ul>
+        <li>TIFF image cutouts for imaging data</li>
+        <li>links to <a href="https://viz.boss.neurodata.io/">NeuroDataViz</a> specific to data resources</li>
+        <li>bookmarklet to go from a view in NeuroDataViz to the cutout form</li>
+    </ul>
+</p>
+
+<h2>
 <a href="{% url 'synaptogram:coll_list' %}">
     {% if user.is_authenticated %}
-    List collections
+        List collections
     {% else %}
-    Login
+        Login
     {% endif %}
 </a>
-</p>
+</h2>
 
 {% endblock %}

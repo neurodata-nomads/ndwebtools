@@ -2,6 +2,13 @@
 {% block content %}
 
 
+<p>
+← 
+<a href="{% url 'synaptogram:coll_list' %}">
+    Back
+</a>
+</p>
+
 <h2>Experiment list</h2>
 
 {% include 'synaptogram/coll_link.html' %}
@@ -15,11 +22,5 @@
 </li>
 {% endfor %}
 </ul>
-
-
-← 
-<a href="{% url 'synaptogram:coll_list' %}">
-    Back
-</a>
 
 {% endblock %}

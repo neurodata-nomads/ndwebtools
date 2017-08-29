@@ -12,6 +12,13 @@
 </script>
 
 
+<p>
+← 
+<a href="{% url 'synaptogram:exp_list' coll %}">
+    Back
+</a>
+</p>
+
 <h2>Set the cutout range:</h2>
 
 {% include 'synaptogram/coll_link.html' %}
@@ -108,10 +115,5 @@
     </table>
     <input type="submit" value="Submit" />
 </form>
-
-← 
-<a href="{% url 'synaptogram:exp_list' coll %}">
-    Back
-</a>
 
 {% endblock %}
