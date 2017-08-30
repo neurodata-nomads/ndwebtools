@@ -1,0 +1,43 @@
+{% extends 'synaptogram/base.html' %}
+{% block content %}
+
+
+<h2>Channel detail</h2>
+
+{% include 'synaptogram/coll_link.html' %}
+{% include 'synaptogram/exp_link.html' %}
+{% include 'synaptogram/channel_link.html' %}
+
+<p><span class="bold">NDViz:</span>
+    <a href="{{ ndviz_url }}" target="_blank">link</a>
+</p>
+
+
+<p><span class="bold">Downsample status:</span>
+    {{ channel_props.downsample_status }}
+    <ul>
+    {% if channel_props.downsample_status == 'NOT_DOWNSAMPLED' %}
+        <li><a href="{% url 'synaptogram:start_downsample' coll exp channel %}">Start Downsample Job</a></li>
+    {% elif channel_props.downsample_status == 'IN_PROGRESS' %}
+        <li><a href="{% url 'synaptogram:stop_downsample' coll exp channel %}">Stop Downsample Job</a></li>
+    {% endif %}
+    </ul>
+</p>
+
+<p><span class="bold">Permissions:</span>
+<ul>
+    {% for p in permissions %}
+        <li>
+            <span class="bold">Group:</span> {{p.group}} (<a href="https://api.boss.neurodata.io/v1/mgmt/group/{{p.group}}" target="_blank">manage</a>)<br>
+            <span class="bold">Permissions:</span>
+            <ul>
+            {% for p_g in p.permissions %}
+                <li>{{p_g}}</li>
+            {% endfor %}
+            </ul>
+        </li>
+    {% endfor %}
+</ul>
+</p>
+
+{% endblock %}

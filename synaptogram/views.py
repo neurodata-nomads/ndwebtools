@@ -132,9 +132,10 @@ def cutout(request,coll,exp):
             form = CutoutForm(channels = channels,
                 limits=coord_frame)
     username = get_username(request)
-    base_url, headers = get_boss_request(request,'')
+    base_url, headers = get_boss_request(request)
     ndviz_url, _ = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,channels)
-    context = {'form': form, 'coll': coll, 'exp': exp, 'username': username, 'ndviz_url':ndviz_url[0], 'coord_frame': sorted(coord_frame.items())}
+    context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels, 
+               'username': username, 'ndviz_url':ndviz_url[0], 'coord_frame': sorted(coord_frame.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 @login_required
@@ -142,7 +143,7 @@ def cut_url_list(request):
     q = request.GET
     coll,exp,x,y,z,channels = process_params(q)
     
-    base_url, headers = get_boss_request(request,'')
+    base_url, headers = get_boss_request(request)
     urls = ret_cut_urls(request,base_url,coll,exp,x,y,z,channels)
     
     channel_cut_list = zip(channels, urls)
@@ -153,7 +154,7 @@ def cut_url_list(request):
 # this generates an ndviz url for the channel/experiment/collection as inputs
 @login_required
 def ndviz_url(request, coll, exp, channel):
-    base_url, headers = get_boss_request(request,'')
+    base_url, headers = get_boss_request(request)
     coord_frame = get_coordinate_frame(request,coll,exp)
     url, _ = ret_ndviz_urls(request,coord_frame,base_url,coll,exp,[channel])
     return HttpResponse('<META http-equiv="refresh" content=".1;URL='+ url[0] + '">')
@@ -252,29 +253,58 @@ def sgram_from_ndviz(request):
     #redirect('synaptogram:cutout', coll=coll,exp=exp) 
 
 @login_required
-def downsample(request, coll, exp, channel):
+def channel_detail(request, coll, exp, channel):
+    add_url = '/'.join(('collection', coll, 'experiment', exp, 'channel', channel))
+    url, headers = get_boss_request(request, add_url)
+    resp = get_resp_from_boss(request, url, headers)
+    request.session['next'] = '/exp_list/' + coll
+    if resp == 'authentication failure':
+        return redirect('/openid/openid/KeyCloak')
+    ch_props = resp
+    
+    add_url = 'permissions/?' + '&'.join(('collection=' + coll, 'experiment=' + exp, 'channel=' + channel))
+    url, headers = get_boss_request(request, add_url)
+    resp = get_resp_from_boss(request, url, headers)
+    request.session['next'] = '/exp_list/' + coll
+    if resp == 'authentication failure':
+        return redirect('/openid/openid/KeyCloak')
+    permissions = resp
+    perm_sets = permissions['permission-sets']
+
+    coord_frame = get_coordinate_frame(request,coll,exp)
+    base_url = get_boss_request(request)
+    ndviz_url, _ = ret_ndviz_urls(request, coord_frame, base_url, coll, exp, [channel])
+    
+    return render(request, 'synaptogram/channel_detail.html',
+        {'coll':coll, 'exp':exp, 'channel':channel, 'channel_props': ch_props, 'permissions': perm_sets,
+        'ndviz_url': ndviz_url[0]})
+
+@login_required
+def start_downsample(request, coll, exp, channel):
     add_url = 'downsample/' + '/'.join((coll, exp, channel))
     url, headers = get_boss_request(request, add_url)
-    r = requests.post(url, headers = headers)
+    S = get_boss_session(request)
+    r = S.post(url, headers = headers)
     if r.status_code != 201:
         print("Error: Request failed!")
         print("Received {} from server.".format(r.status_code))
     else:
         print("Downsample request sent for {}".format(url))
-    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll,exp)))
+    return HttpResponseRedirect(reverse('synaptogram:channel_detail', args=(coll, exp, channel)))
 
 @login_required
-def downsample_del(request, coll, exp, channel):
+def stop_downsample(request, coll, exp, channel):
     add_url = 'downsample/' + '/'.join((coll, exp, channel))
     url, headers = get_boss_request(request, add_url)
-    r = requests.delete(url, headers = headers)
+    S = get_boss_session(request)
+    r = S.delete(url, headers = headers)
     if r.status_code != 204: #409 is the error if res. not found
         print("Error: Request failed!")
         print("Received {} from server.".format(r.status_code))
         #add messages.error
     else:
         print("Downsample delete request sent for {}".format(url))
-    return HttpResponseRedirect(reverse('synaptogram:cutout', args=(coll, exp)))
+    return HttpResponseRedirect(reverse('synaptogram:channel_detail', args=(coll, exp, channel)))
 
 def set_sess_exp(request):
     id_token = request.session.get('id_token')
@@ -295,7 +325,7 @@ def get_username(request):
 
 # All the interaction with the Boss:
 
-def get_boss_request(request,add_url):
+def get_boss_request(request, add_url=''):
     api_key = request.session.get('access_token')
     # api key should always be present because we should be calling get_boss_request from views with @login_required
     boss_url = 'https://api.boss.neurodata.io/v1/'
@@ -303,8 +333,15 @@ def get_boss_request(request,add_url):
     url = boss_url + add_url
     return url, headers
 
-def get_resp_from_boss(request,url, headers):
-    r = requests.get(url, headers = headers)
+def get_boss_session(request):
+    if 'boss_sess' not in request.session:
+        request.session['boss_sess'] = requests.Session()
+        request.session['boss_sess'].stream=False
+    return request.session['boss_sess']
+
+def get_resp_from_boss(request, url, headers):
+    S = get_boss_session(request)
+    r = S.get(url, headers = headers)
     if r.status_code == 500:
         messages.error(request, 'server error')
         return 'server error'
@@ -386,7 +423,7 @@ def get_coordinate_frame(request,coll,exp):
 
 #this is questionable where this should go - helper file or file that gets stuff from the boss
 def get_chan_img_data(request,coll,exp,channel,x,y,z):
-    base_url, headers = get_boss_request(request,'')
+    base_url, headers = get_boss_request(request)
     headers_blosc = headers
     headers_blosc['Content-Type']='application/blosc-python'
 
@@ -529,7 +566,7 @@ def create_voxel_rng(x,y,z):
     return x_rng,y_rng,z_rng
 
 def plot_sgram(request,coll,exp,x,y,z,channels):
-    base_url, headers = get_boss_request(request,'')
+    base_url, headers = get_boss_request(request)
 
     num_ch = len(channels)
 
