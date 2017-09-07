@@ -54,7 +54,7 @@ def coll_list(request):
 
 @login_required
 def exp_list(request,coll):
-    add_url = 'collection/' + coll + '/experiment/'
+    add_url = 'collection/{}/experiment/'.format(coll)
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     request.session['next'] = '/exp_list/' + coll
@@ -73,7 +73,7 @@ def cutout(request,coll,exp):
     if channels is None:
         return redirect( reverse('synaptogram:exp_list',args={coll}) )
     elif channels == 'authentication failure':
-        request.session['next'] = '/cutout/' + coll + '/' + exp
+        request.session['next'] = '/'.join('/cutout', coll, exp)
         return redirect('/openid/openid/KeyCloak')
 
     #getting the coordinate frame limits for the experiment:
@@ -262,7 +262,7 @@ def channel_detail(request, coll, exp, channel):
         return redirect('/openid/openid/KeyCloak')
     ch_props = resp
     
-    add_url = 'permissions/?' + '&'.join(('collection=' + coll, 'experiment=' + exp, 'channel=' + channel))
+    add_url = 'permissions/?' + '&'.join(('collection={}'.format(coll), 'experiment={}'.format(exp), 'channel={}'.format(channel)))
     url, headers = get_boss_request(request, add_url)
     resp = get_resp_from_boss(request, url, headers)
     request.session['next'] = '/exp_list/' + coll
@@ -281,7 +281,7 @@ def channel_detail(request, coll, exp, channel):
 
 @login_required
 def start_downsample(request, coll, exp, channel):
-    add_url = 'downsample/' + '/'.join((coll, exp, channel))
+    add_url = '/'.join(('downsample', coll, exp, channel))
     url, headers = get_boss_request(request, add_url)
     S = get_boss_session(request)
     r = S.post(url, headers = headers)
@@ -294,7 +294,7 @@ def start_downsample(request, coll, exp, channel):
 
 @login_required
 def stop_downsample(request, coll, exp, channel):
-    add_url = 'downsample/' + '/'.join((coll, exp, channel))
+    add_url = '/'.join(('downsample', coll, exp, channel))
     url, headers = get_boss_request(request, add_url)
     S = get_boss_session(request)
     r = S.delete(url, headers = headers)
@@ -329,7 +329,7 @@ def get_boss_request(request, add_url=''):
     api_key = request.session.get('access_token')
     # api key should always be present because we should be calling get_boss_request from views with @login_required
     boss_url = 'https://api.boss.neurodata.io/v1/'
-    headers = {'Authorization': 'Bearer ' + api_key}
+    headers = {'Authorization': 'Bearer {}'.format(api_key)}
     url = boss_url + add_url
     return url, headers
 
@@ -359,20 +359,20 @@ def get_resp_from_boss(request, url, headers):
         return r
 
 def get_all_channels(request,coll,exp):
-    add_url = 'collection/' + coll + '/experiment/' + exp + '/channels/'
+    add_url = 'collection/{}/experiment/{}/channels/'.format(coll, exp)
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
         return resp #need to handle this better
     elif resp['channels'] == []:
-        messages.error(request, 'No channels found for experiment: ' + exp)
+        messages.error(request, 'No channels found for experiment: {}'.format(exp))
         return None
     else:
         channels = tuple(resp['channels'])
     return channels
 
 def get_ch_metadata(request,coll,exp,ch):
-    add_url = 'collection/' + coll + '/experiment/' + exp + '/channel/' + ch
+    add_url = 'collection/{}/experiment/{}/channel/{}'.format(coll, exp, ch)
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
@@ -380,7 +380,7 @@ def get_ch_metadata(request,coll,exp,ch):
     return resp
 
 def get_exp_metadata(request,coll,exp):
-    add_url = 'collection/' + coll + '/experiment/' + exp
+    add_url = 'collection/{}/experiment/{}'.format(coll, exp)
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
@@ -393,7 +393,7 @@ def get_coordinate_frame(request,coll,exp):
     if exp_meta == 'authentication failure':
         return exp_meta
     coord_frame = exp_meta['coord_frame']
-    add_url = 'coord/' + coord_frame
+    add_url = 'coord/{}'.format(coord_frame)
     url, headers = get_boss_request(request,add_url)
     resp = get_resp_from_boss(request,url, headers)
     if resp == 'authentication failure':
