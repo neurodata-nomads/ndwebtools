@@ -168,7 +168,11 @@ def cut_url_list(request):
 @login_required
 def ndviz_url(request, coll, exp, channel):
     base_url, headers = get_boss_request(request)
-    url, _ = ret_ndviz_urls(request, base_url, coll, exp, [channel])
+    if channel is None:
+        channels = get_all_channels(request, coll, exp)
+    else:
+        channels = [channel]
+    url, _ = ret_ndviz_urls(request, base_url, coll, exp, channels)
     return HttpResponse(
         '<META http-equiv="refresh" content=".1;URL=' + url[0] + '">')
 

@@ -13,6 +13,8 @@ urlpatterns = [
     url(r'^sgram/$', views.sgram, name='sgram'),
     url(r'^ndviz_url/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<channel>[-\w]+)/$',
         views.ndviz_url, name='ndviz_url'),
+    url(r'^ndviz_url/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/$',
+        views.ndviz_url, {'channel': None}, name='ndviz_url'),
     url(r'^ndviz_url_list/$', views.ndviz_url_list, name='ndviz_url_list'),
     url(r'^tiff_stack/$', views.tiff_stack, name='tiff_stack'),
     url(r'^tiff_stack_channel/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<x>[-\w:]+)/(?P<y>[-\w:]+)/(?P<z>[-\w:]+)/(?P<channel>[-\w:]+)/$',
