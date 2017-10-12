@@ -5,7 +5,7 @@
 <script language="JavaScript">
     function toggle(source, checkboxes_name) {
         checkboxes = document.getElementsByName(checkboxes_name);
-        for(var i=0, n=checkboxes.length;i<n;i++) {
+        for (var i = 0, n = checkboxes.length; i < n; i++) {
             checkboxes[i].checked = source.checked;
         }
     }
@@ -13,10 +13,10 @@
 
 
 <p>
-← 
-<a href="{% url 'synaptogram:exp_list' coll %}">
-    Back
-</a>
+    ←
+    <a href="{% url 'synaptogram:exp_list' coll %}">
+        Back
+    </a>
 </p>
 
 <h2>Experiment Detail</h2>
@@ -24,17 +24,21 @@
 {% include 'synaptogram/coll_link.html' %}
 {% include 'synaptogram/exp_link.html' %}
 
-<a href="{{ ndviz_url }}" target="_blank">NDViz</a> for all channels (all but the first 3 disabled)
+<a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a> for all channels 
+
+{% if channels|length > 3 %} (all but the first 3 disabled) {% endif %} 
 
 {% include 'synaptogram/coord_frame_detail.html' %}
 
 <p>
-<span class='bold'>Channels:</span>
-<ul>
-{% for ch in channels %}
-    <li><a href="{% url 'synaptogram:channel_detail' coll exp ch %}">{{ch}}</a></li>
-{% endfor %}
-</ul>
+    <span class='bold'>Channels:</span>
+    <ul>
+        {% for ch in channels %}
+        <li>
+            <a href="{% url 'synaptogram:channel_detail' coll exp ch %}">{{ch}}</a>
+        </li>
+        {% endfor %}
+    </ul>
 </p>
 
 <h3>Cutout:</h3>
@@ -48,18 +52,18 @@
                 <td>{{ form.x_min.label_tag }}
 
                 </td>
-    
+
                 <td>{{ form.x_min }}</td>
             </div>
-        </tr> 
-        
+        </tr>
+
         <tr>
             <div class="fieldWrapper">
                 {{ form.x_max.errors }}
                 <td>{{ form.x_max.label_tag }}</td>
                 <td>{{ form.x_max }}</td>
             </div>
-        </tr> 
+        </tr>
 
         <tr>
             <div class="fieldWrapper">
@@ -67,32 +71,32 @@
                 <td>{{ form.y_min.label_tag }}</td>
                 <td>{{ form.y_min }}</td>
             </div>
-        </tr> 
-        
+        </tr>
+
         <tr>
             <div class="fieldWrapper">
                 {{ form.y_max.errors }}
                 <td>{{ form.y_max.label_tag }}</td>
                 <td>{{ form.y_max }}</td>
             </div>
-        </tr> 
+        </tr>
 
-        
+
         <tr>
             <div class="fieldWrapper">
                 {{ form.z_min.errors }}
                 <td>{{ form.z_min.label_tag }}</td>
                 <td>{{ form.z_min }}</td>
             </div>
-        </tr> 
-        
+        </tr>
+
         <tr>
             <div class="fieldWrapper">
                 {{ form.z_max.errors }}
                 <td>{{ form.z_max.label_tag }}</td>
                 <td>{{ form.z_max }}</td>
             </div>
-        </tr> 
+        </tr>
 
         <tr>
             <div class="fieldWrapper">
@@ -100,10 +104,10 @@
                 <td>{{ form.channels.label_tag }}</td>
                 <td>
                     <label for="toggle_ch_checkbox">
-                        <input type="checkbox" onClick="toggle(this, 'channels' )" 
-                            id="toggle_ch_checkbox" checked/> 
+                        <input type="checkbox" onClick="toggle(this, 'channels' )"
+                        id="toggle_ch_checkbox" checked/>
                         Toggle channels
-                    </label><br>
+                    </label><br> 
                     {{ form.channels }}
                 </td>
             </div>

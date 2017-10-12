@@ -142,10 +142,8 @@ def cutout(request, coll, exp):
             form = CutoutForm(channels=channels,
                               limits=coord_frame)
     username = get_username(request)
-    base_url, headers = get_boss_request(request)
-    ndviz_url, _ = ret_ndviz_urls(request, base_url, coll, exp, channels)
     context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels,
-               'username': username, 'ndviz_url': ndviz_url[0], 'coord_frame': sorted(coord_frame.items())}
+               'username': username, 'coord_frame': sorted(coord_frame.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 

@@ -1,12 +1,12 @@
-{% extends 'synaptogram/base.html' %}
+{% extends 'synaptogram/base.html' %} 
 {% block content %}
 
 
 <p>
-← 
-<a href="{% url 'synaptogram:coll_list' %}">
-    Back
-</a>
+    ←
+    <a href="{% url 'synaptogram:coll_list' %}">
+        Back
+    </a>
 </p>
 
 <h2>Experiment list</h2>
@@ -14,13 +14,15 @@
 {% include 'synaptogram/coll_link.html' %}
 
 <ul>
-{% for exp in experiments %}
-<li>
-    <a href="{% url 'synaptogram:cutout' coll exp %}">
-        {{ exp }}
-    </a>
-</li>
-{% endfor %}
+    {% for exp in experiments %}
+    <li>
+        <a href="{% url 'synaptogram:cutout' coll exp %}">
+            {{ exp }}
+        </a>
+        ,
+        <a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a>
+    </li>
+    {% endfor %}
 </ul>
 
 {% endblock %}
