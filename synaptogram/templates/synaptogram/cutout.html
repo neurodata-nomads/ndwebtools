@@ -36,6 +36,7 @@
         {% for ch in channels %}
         <li>
             <a href="{% url 'synaptogram:channel_detail' coll exp ch %}">{{ch}}</a>
+            (<a href="{% url 'synaptogram:ndviz_url' coll exp ch%}" target="_blank">NDViz</a>)
         </li>
         {% endfor %}
     </ul>

@@ -16,11 +16,8 @@
 <ul>
     {% for exp in experiments %}
     <li>
-        <a href="{% url 'synaptogram:cutout' coll exp %}">
-            {{ exp }}
-        </a>
-        ,
-        <a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a>
+        <a href="{% url 'synaptogram:cutout' coll exp %}">{{exp}}</a>
+        (<a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a>)
     </li>
     {% endfor %}
 </ul>
