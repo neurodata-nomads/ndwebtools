@@ -171,8 +171,7 @@ def ndviz_url(request, coll, exp, channel):
     else:
         channels = [channel]
     url, _ = ret_ndviz_urls(request, base_url, coll, exp, channels)
-    return HttpResponse(
-        '<META http-equiv="refresh" content=".1;URL=' + url[0] + '">')
+    return redirect(url[0])
 
 
 @login_required
