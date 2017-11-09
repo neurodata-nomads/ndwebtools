@@ -38,9 +38,9 @@
     # configuration of the server
     server {
         # the port your site will be served on
-        listen      8001;
+        listen      80;
         # the domain name it will serve for
-        server_name ben-dev.neurodata.io; # substitute your machine's IP address or FQDN
+        server_name ndwebtools.neurodata.io 127.0.0.1; # substitute your machine's IP address or FQDN
         charset     utf-8;
 
         # max upload size
@@ -62,15 +62,17 @@
         }
     }
 
-    #keycloak was set up for 8001 so this is how we respond to port 80 requests
     server {
+        listen       8001;
         listen       80;
-        server_name  ben-dev.neurodata.io;
+        server_name  ben-dev.neurodata.io ndwt.neurodata.io;
 
-        location / {
-            proxy_pass http://127.0.0.1:8001;
-        }
+        return 301 $scheme://ndwebtools.neurodata.io$request_uri;
+
     }
+
+    uwsgi_buffer_size   32k;
+    uwsgi_buffers   16 16k;
     ```
 - make symbolic link for systemd and nginx
     - `sudo ln -s /home/ubuntu/uwsgi-ndwebtools/ndwebtools/mysite_nginx.conf /etc/nginx/sites-enabled/`
