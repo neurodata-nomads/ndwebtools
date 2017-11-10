@@ -1,40 +1,43 @@
 {% load staticfiles %}
 <html>
+
 <head>
     <title>NDwebtools</title>
     <link rel="stylesheet" href="{% static 'css/default.css' %}">
     <link href="https://fonts.googleapis.com/css?family=Open+Sans|Roboto" rel="stylesheet">
+    <link rel="shortcut icon" href="{% static 'favicon/favicon.ico' %}" />
 </head>
 
 <body>
     <div class="page-header">
-        <h1><a href="/">NDwebtools</a></h1>
+        <h1>
+            <a href="/">NDwebtools</a>
+        </h1>
 
-        {% include 'synaptogram/logout_link.html' %}
-        {% include 'synaptogram/bookmarklet_link.html' %}
+        {% include 'synaptogram/logout_link.html' %} {% include 'synaptogram/bookmarklet_link.html' %}
     </div>
 
     {% if messages %}
     <ul class="messages">
         {% for message in messages %}
-        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-        {% endfor %}
+        <li{% if message.tags %} class="{{ message.tags }}" {% endif %}>{{ message }}</li>
+            {% endfor %}
     </ul>
     {% endif %}
 
     <div class="content container">
         <div class="row">
             <div class="col-md-8">
-            {% block content %}
-            {% endblock %}
+                {% block content %} {% endblock %}
             </div>
         </div>
     </div>
 
 
-<div id='footer'>
-    <a href=https://neurodata.io/ target="_blank">Neurodata.io<a>
-</div>
+    <div id='footer'>
+        <a href=https://neurodata.io/ target="_blank">Neurodata.io
+            <a>
+    </div>
 </body>
 
 </html>

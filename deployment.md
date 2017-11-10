@@ -113,6 +113,10 @@
 - make symbolic link for systemd and uwsgi
     - `sudo ln -s ~/uwsgi-ndwebtools/ndwebtools/mysite_uwsgi.ini /etc/uwsgi/apps-enabled/`
 
+### Collect the static files into one location
+- `python manage.py collectstatic`
+
+
 ### Start the services
 - `sudo systemctl daemon-reload`
 - `sudo systemctl start uwsgi`
