@@ -561,6 +561,11 @@ def ret_ndviz_urls(request, base_url, coll, exp,
 
     ndviz_urls = []
     z_vals = []
+
+    if x is not None and y is not None:
+        coord_frame = get_coordinate_frame(request, coll, exp)
+        x_voxel_size, y_voxel_size, z_voxel_size = get_voxel_size(coord_frame)
+
     for z_val in range(z_rng[0], z_rng[1]):
         ch_viz_links = []
         for ch_indx, ch in enumerate(channels):
@@ -577,11 +582,16 @@ def ret_ndviz_urls(request, base_url, coll, exp,
             x_mid = str(round(sum(x_vals) / 2))
             y_vals = list(map(int, y.split(':')))
             y_mid = str(round(sum(y_vals) / 2))
+
+            # assumes certain px wide
+            window_width = 800
+            zoomFactor = x_voxel_size * (x_vals[1] - x_vals[0]) / window_width
+
             # add navigation
-            joined_ndviz_url = joined_ndviz_url + '_\'navigation\':{\'pose\':{\'position\':{\'voxelCoordinates\':['\
-                + x_mid + '_' + y_mid + '_' + str(z_val) + ']}}}}'
+            joined_ndviz_url = '{}_\'navigation\':{{\'pose\':{{\'position\':{{\'voxelCoordinates\':[{}_{}_{}]}}}}_\'zoomFactor\':{}}}}}'.format(
+                joined_ndviz_url, x_mid, y_mid, z_val, zoomFactor)
         else:
-            joined_ndviz_url = joined_ndviz_url + '}'
+            joined_ndviz_url = '{}}}'.format(joined_ndviz_url)
 
         ndviz_urls.append(joined_ndviz_url)
         z_vals.append(str(z_val))
