@@ -1,11 +1,25 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
+{% load static %}
+<script type="text/javascript" src="{% static 'ndviz_zoomfactor.js' %}">
+</script>
+
 <h2>Neurodata Viz URLs</h2>
 
 {% for z,cu in channel_ndviz_list %}
 <ul>
-    <li>z: <a href={{cu}} target="_blank">{{z}}</a></li>
+    <li id="{{z}}">
+        z:
+        <script>
+            var new_url = replace_zoomfactor("{{cu|safe}}", {{x|safe}}, {{voxel_sizes|safe}})
+            a = document.createElement('a');
+            a.setAttribute('href', new_url);
+            a.setAttribute('target', '_blank');
+            a.innerHTML = "{{z}}";
+            document.getElementById('{{z}}').appendChild(a);
+        </script>
+    </li>
 </ul>
 {% endfor %}
 

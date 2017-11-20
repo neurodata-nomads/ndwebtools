@@ -179,14 +179,21 @@ def ndviz_url_list(request):
     q = request.GET
     coll, exp, x, y, z, channels = process_params(q)
     base_url, headers = get_boss_request(request, '')
+
+    coord_frame = get_coordinate_frame(request, coll, exp)
+    voxel_sizes = get_voxel_size(coord_frame)
     urls, z_vals = ret_ndviz_urls(
-        request, base_url, coll, exp, channels, x, y, z)
+        request, base_url, coll, exp, channels, x, y, z, voxel_sizes)
+
+    x_int = list(map(int, x.split(':')))
 
     channel_ndviz_list = zip(z_vals, urls)
     context = {
         'channel_ndviz_list': channel_ndviz_list,
         'coll': coll,
-        'exp': exp}
+        'exp': exp,
+        'x': x_int,
+        'voxel_sizes': voxel_sizes}
     return render(request, 'synaptogram/ndviz_url_list.html', context)
 
 
@@ -546,7 +553,7 @@ def ret_ndviz_channel_part(boss_url, ch_metadata, coll, exp, ch, ch_indx=0):
 
 
 def ret_ndviz_urls(request, base_url, coll, exp,
-                   channels, x=None, y=None, z=None):
+                   channels, x=None, y=None, z=None, voxel_sizes=None):
     # https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     # unescaped by: http://www.utilities-online.info/urlencode/
     # https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
@@ -562,10 +569,6 @@ def ret_ndviz_urls(request, base_url, coll, exp,
     ndviz_urls = []
     z_vals = []
 
-    if x is not None and y is not None:
-        coord_frame = get_coordinate_frame(request, coll, exp)
-        x_voxel_size, y_voxel_size, z_voxel_size = get_voxel_size(coord_frame)
-
     for z_val in range(z_rng[0], z_rng[1]):
         ch_viz_links = []
         for ch_indx, ch in enumerate(channels):
@@ -577,19 +580,16 @@ def ret_ndviz_urls(request, base_url, coll, exp,
         joined_ndviz_url = ''.join(
             (ndviz_base, '#!{\'layers\':{', '_'.join(ch_viz_links), '}'))
 
-        if x is not None and y is not None:
+        if x is not None and y is not None and voxel_sizes is not None:
             x_vals = list(map(int, x.split(':')))
             x_mid = str(round(sum(x_vals) / 2))
             y_vals = list(map(int, y.split(':')))
             y_mid = str(round(sum(y_vals) / 2))
 
-            # assumes certain px wide
-            window_width = 800
-            zoomFactor = x_voxel_size * (x_vals[1] - x_vals[0]) / window_width
-
             # add navigation
-            joined_ndviz_url = '{}_\'navigation\':{{\'pose\':{{\'position\':{{\'voxelCoordinates\':[{}_{}_{}]}}}}_\'zoomFactor\':{}}}}}'.format(
-                joined_ndviz_url, x_mid, y_mid, z_val, zoomFactor)
+            # we add the zoomfactor in the template, where we can get the accurate window width
+            joined_ndviz_url = '{}_\'navigation\':{{\'pose\':{{\'position\':{{\'voxelCoordinates\':[{}_{}_{}]}}}}_\'zoomFactor\':}}}}'.format(
+                joined_ndviz_url, x_mid, y_mid, z_val)
         else:
             joined_ndviz_url = '{}}}'.format(joined_ndviz_url)
 

@@ -24,7 +24,7 @@ class CutoutForm(forms.Form):
         self.fields['z_max'] = forms.IntegerField(label='z_max',min_value=limits['z_start'],max_value=limits['z_stop'], initial=limits['z_stop'])
 
     next_action = (
-        ('ndviz','Neurodata Viz links per channel'),
+        ('ndviz','NeuroData Viz links for each z slice (matches view in x)'),
         ('tiff_stack','Download TIFF stack per channel'),
         ('sgram','Synaptogram'),
         )
