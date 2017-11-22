@@ -21,7 +21,7 @@
 
 <h2>Experiment Detail</h2>
 
-{% include 'synaptogram/coll_link.html' %}
+{% include 'synaptogram/coll_link.html' %} 
 {% include 'synaptogram/exp_link.html' %}
 
 <a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a> for all channels 
@@ -105,10 +105,10 @@
                 <td>{{ form.channels.label_tag }}</td>
                 <td>
                     <label for="toggle_ch_checkbox">
-                        <input type="checkbox" onClick="toggle(this, 'channels' )"
-                        id="toggle_ch_checkbox" checked/>
+                        <input type="checkbox" onClick="toggle(this, 'channels' )" 
+                        id="toggle_ch_checkbox" checked/> 
                         Toggle channels
-                    </label><br> 
+                    </label><br>
                     {{ form.channels }}
                 </td>
             </div>
@@ -118,7 +118,19 @@
             <div class="fieldWrapper">
                 {{ form.endpoint.errors }}
                 <td>{{ form.endpoint.label_tag }}</td>
-                <td>{{ form.endpoint }}</td>
+                <td>
+                <ul id="id_endpoint">
+                {% for radio in form.endpoint %}
+                    <li>
+                        {{ radio }}
+                        {% if radio.choice_label == 'Download TIFF stack per channel' %}
+                            at {{ form.res_select.label_tag }}
+                            {{ form.res_select }}
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
+                </td>
             </div>
         </tr>
     </table>

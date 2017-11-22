@@ -1,25 +1,23 @@
-import time
-import re
-import zipfile
 import os
+import re
+import time
+import zipfile
 from io import BytesIO
 
+import blosc
+import matplotlib
+import numpy as np
 import requests
-
-from django.shortcuts import get_object_or_404, render, redirect
-from django.http import HttpResponseRedirect, HttpResponse, FileResponse
-from django.urls import reverse
-from django.views import generic
-from django.utils import timezone
-from django.contrib.auth.decorators import login_required
+import tifffile as tiff
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views import generic
 
-import blosc
-import tifffile as tiff
-
-import numpy as np
-import matplotlib
 matplotlib.use('Agg')
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -74,7 +72,7 @@ def cutout(request, coll, exp):
     if channels is None:
         return redirect(reverse('synaptogram:exp_list', args={coll}))
     elif channels == 'authentication failure':
-        request.session['next'] = '/'.join('/cutout', coll, exp)
+        request.session['next'] = '/'.join(('/cutout', coll, exp))
         return redirect('/openid/openid/KeyCloak')
 
     # getting the coordinate frame limits for the experiment:
@@ -89,11 +87,15 @@ def cutout(request, coll, exp):
         # "z_start": 0,
         # "z_stop": 500
 
+    exp_meta = get_exp_metadata(request, coll, exp)
+    res_vals = list(range(exp_meta['num_hierarchy_levels']))
+
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
         # create a form instance and populate it with data from the request:
 
-        form = CutoutForm(request.POST, channels=channels, limits=coord_frame)
+        form = CutoutForm(request.POST, channels=channels,
+                          limits=coord_frame, res_vals=res_vals)
         # check whether it's valid:
         if form.is_valid():
             # process the data in form.cleaned_data as required
@@ -104,10 +106,12 @@ def cutout(request, coll, exp):
             z = str(form.cleaned_data['z_min']) + \
                 ':' + str(form.cleaned_data['z_max'])
 
+            res = form.cleaned_data['res_select']
+
             channels = form.cleaned_data['channels']
 
             pass_params_d = {'coll': coll, 'exp': exp, 'x': x,
-                             'y': y, 'z': z, 'channels': ','.join(channels)}
+                             'y': y, 'z': z, 'channels': ','.join(channels), 'res': res}
             pass_params = '&'.join(['%s=%s' % (key, value)
                                     for (key, value) in pass_params_d.items()])
             params = '?' + pass_params
@@ -117,9 +121,6 @@ def cutout(request, coll, exp):
             if end_path == 'sgram':
                 return HttpResponseRedirect(
                     reverse('synaptogram:sgram') + params)
-            elif end_path == 'cut_urls':
-                return HttpResponseRedirect(
-                    reverse('synaptogram:cut_url_list') + params)
             elif end_path == 'ndviz':
                 return HttpResponseRedirect(
                     reverse('synaptogram:ndviz_url_list') + params)
@@ -137,10 +138,10 @@ def cutout(request, coll, exp):
             form = CutoutForm(channels=channels,
                               initial={'x_min': str(x_rng[0]), 'y_min': str(y_rng[0]), 'z_min': str(z_rng[0]),
                                        'x_max': str(x_rng[1]), 'y_max': str(y_rng[1]), 'z_max': str(z_rng[1])},
-                              limits=coord_frame)
+                              limits=coord_frame, res_vals=res_vals)
         else:
             form = CutoutForm(channels=channels,
-                              limits=coord_frame)
+                              limits=coord_frame, res_vals=res_vals)
     username = get_username(request)
     context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels,
                'username': username, 'coord_frame': sorted(coord_frame.items())}
@@ -148,24 +149,9 @@ def cutout(request, coll, exp):
 
 
 @login_required
-def cut_url_list(request):
-    q = request.GET
-    coll, exp, x, y, z, channels = process_params(q)
-
-    base_url, headers = get_boss_request(request)
-    urls = ret_cut_urls(request, base_url, coll, exp, x, y, z, channels)
-
-    channel_cut_list = zip(channels, urls)
-
-    context = {'channel_cut_list': channel_cut_list, 'coll': coll, 'exp': exp}
-    return render(request, 'synaptogram/cut_url_list.html', context)
-
-# this generates an ndviz url for the channel/experiment/collection as inputs
-
-
-@login_required
 def ndviz_url(request, coll, exp, channel):
-    base_url, headers = get_boss_request(request)
+    # this generates an ndviz url for the channel/experiment/collection as inputs
+    base_url, _ = get_boss_request(request)
     if channel is None:
         channels = get_all_channels(request, coll, exp)
     else:
@@ -178,7 +164,7 @@ def ndviz_url(request, coll, exp, channel):
 def ndviz_url_list(request):
     q = request.GET
     coll, exp, x, y, z, channels = process_params(q)
-    base_url, headers = get_boss_request(request, '')
+    base_url, _ = get_boss_request(request, '')
     urls, z_vals = ret_ndviz_urls(
         request, base_url, coll, exp, channels, x, y, z)
 
@@ -194,47 +180,40 @@ def ndviz_url_list(request):
 def tiff_stack(request):
     q = request.GET
     coll, exp, x, y, z, channels = process_params(q)
+    res = q.get('res')
 
     urls = []
     for ch in channels:
         # create links to go to a method that will download the TIFF images
         # inside each channel
-        urls.append(
-            reverse(
-                'synaptogram:tiff_stack_channel',
-                args=(
-                    coll,
-                    exp,
-                    x,
-                    y,
-                    z,
-                    ch)))
+        urls.append(reverse('synaptogram:tiff_stack_channel',
+                            args=(coll, exp, x, y, z, ch, res)))
 
     # or package the images and create links for the images
     channels_arg = ','.join(channels)
 
     return render(request, 'synaptogram/tiff_url_list.html', {'urls': urls,
-                                                              'coll': coll, 'exp': exp, 'x': x, 'y': y, 'z': z, 'channels': channels_arg})
+                                                              'coll': coll, 'exp': exp, 'x': x, 'y': y, 'z': z, 'channels': channels_arg, 'res': res})
 
 
 @login_required
-def tiff_stack_channel(request, coll, exp, x, y, z, channel):
-    img_data, cut_url = get_chan_img_data(request, coll, exp, channel, x, y, z)
+def tiff_stack_channel(request, coll, exp, x, y, z, channel, res):
+    img_data, cut_url = get_chan_img_data(
+        request, coll, exp, channel, x, y, z, res)
     if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
         return redirect(reverse('synaptogram:cutout', args=(coll, exp)))
     obj = BytesIO()
     tiff.imsave(obj, img_data, metadata={'cut_url': cut_url})
 
-    fname = '_'.join(
-        (coll, exp, str(x), str(y), str(z), channel)).replace(
-        ':', '_') + '.tiff'
+    fname = '{}_{}_{}_{}_{}_{}_{}.tiff'.format(
+        coll, exp, x, y, z, channel, res).replace(':', '_')
     response = HttpResponse(obj.getvalue(), content_type='image/TIFF')
     response['Content-Disposition'] = 'attachment; filename="' + fname + '"'
     return response
 
 
 @login_required
-def zip_tiff_stacks(request, coll, exp, x, y, z, channels):
+def zip_tiff_stacks(request, coll, exp, x, y, z, channels, res):
     fname = 'media/' + \
         '_'.join(
             (coll, exp, str(x), str(y), str(z))).replace(
@@ -250,13 +229,11 @@ def zip_tiff_stacks(request, coll, exp, x, y, z, channels):
     with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
         for ch in channels:
             img_data, cut_url = get_chan_img_data(
-                request, coll, exp, ch, x, y, z)
+                request, coll, exp, ch, x, y, z, res)
             if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
                 raise Exception
-            fn = 'media/' + \
-                '_'.join(
-                    (coll, exp, str(x), str(y), str(z), ch)).replace(
-                    ':', '_') + '.tiff'
+            fn = 'media/{}_{}_{}_{}_{}_{}_{}.tiff'.format(
+                coll, exp, x, y, z, ch, res).replace(':', '_')
             tiff.imsave(fn, img_data, metadata={'cut_url': cut_url})
 
             # running out of memory so I am not doing this anymore:
@@ -321,7 +298,6 @@ def channel_detail(request, coll, exp, channel):
     permissions = resp
     perm_sets = permissions['permission-sets']
 
-    coord_frame = get_coordinate_frame(request, coll, exp)
     base_url = get_boss_request(request)
     ndviz_url, _ = ret_ndviz_urls(request, base_url, coll, exp, [channel])
 
@@ -478,14 +454,30 @@ def get_coordinate_frame(request, coll, exp):
 # helper functions which process data from the Boss or don't interact with
 # the Boss:
 
+def adjust_downsample(res, xy):
+    if res > 0:
+        xy_adjust = []
+        for ext in xy:
+            ext_int = [int(aa) for aa in ext.split(':')]
+            xy_adjust.append(
+                ':'.join([str(round(xx / (2**res))) for xx in ext_int]))
+        return xy_adjust
+    else:
+        return xy
+
 # this is questionable where this should go - helper file or file that
 # gets stuff from the boss
-def get_chan_img_data(request, coll, exp, channel, x, y, z):
+
+
+def get_chan_img_data(request, coll, exp, channel, x, y, z, res):
     base_url, headers = get_boss_request(request)
     headers_blosc = headers
     headers_blosc['Content-Type'] = 'application/blosc-python'
+    res = int(res)
+    x, y = adjust_downsample(res, [x, y])
 
-    cut_url = ret_cut_urls(request, base_url, coll, exp, x, y, z, [channel])[0]
+    cut_url = ret_cut_urls(request, base_url, coll, exp,
+                           x, y, z, [channel], res)[0]
     r = get_resp_from_boss(request, cut_url, headers_blosc)
     if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
         return r, cut_url
@@ -583,8 +575,7 @@ def ret_ndviz_urls(request, base_url, coll, exp,
     return ndviz_urls, z_vals
 
 
-def ret_cut_urls(request, base_url, coll, exp, x, y, z, channels):
-    res = 0
+def ret_cut_urls(request, base_url, coll, exp, x, y, z, channels, res):
     cut_urls = []
     for ch in channels:
         JJ = '/'.join(('cutout', coll, exp, ch, str(res), x, y, z))
@@ -649,7 +640,7 @@ def plot_sgram(request, coll, exp, x, y, z, channels):
     #fig=plt.figure(figsize=(10, 25), dpi= 150, facecolor='w', edgecolor='k')
     for ch_idx, ch in enumerate(
             channels):  # , exception_handler=exception_handler
-        data_mat, _ = get_chan_img_data(request, coll, exp, ch, x, y, z)
+        data_mat, _ = get_chan_img_data(request, coll, exp, ch, x, y, z, 0)
 
         # loop over z and plot them across
         for z_idx in range(data_mat.shape[0]):
