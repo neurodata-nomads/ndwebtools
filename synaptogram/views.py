@@ -275,7 +275,8 @@ def sgram_from_ndviz(request):
     x = ':'.join(request.GET.get('xextent').split(','))
     y = ':'.join(request.GET.get('yextent').split(','))
     coords = request.GET.get('coords').split(',')
-    z = ':'.join((coords[-1], str(int(coords[-1]) + 1)))
+    z_int = int(float(coords[-1]))
+    z = '{:d}:{:d}'.format(z_int, z_int + 1)
 
     # go to form to let user decide what they want to do
     pass_params_d = {'x': x, 'y': y, 'z': z}
