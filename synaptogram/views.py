@@ -75,8 +75,11 @@ def cutout(request, coll, exp):
         request.session['next'] = '/'.join(('/cutout', coll, exp))
         return redirect('/openid/openid/KeyCloak')
 
+    exp_meta = get_exp_metadata(request, coll, exp)
+    res_vals = list(range(exp_meta['num_hierarchy_levels']))
+
     # getting the coordinate frame limits for the experiment:
-    coord_frame = get_coordinate_frame(request, coll, exp)
+    coord_frame = get_coordinate_frame(request, coll, exp, exp_meta)
     if coord_frame == 'authentication failure':
         return redirect('/openid/openid/KeyCloak')
     # important stuff out of coord_frame:
@@ -86,9 +89,6 @@ def cutout(request, coll, exp):
         # "y_stop": 1000,
         # "z_start": 0,
         # "z_stop": 500
-
-    exp_meta = get_exp_metadata(request, coll, exp)
-    res_vals = list(range(exp_meta['num_hierarchy_levels']))
 
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
@@ -439,9 +439,10 @@ def get_exp_metadata(request, coll, exp):
     return resp
 
 
-def get_coordinate_frame(request, coll, exp):
+def get_coordinate_frame(request, coll, exp, exp_meta=None):
     # https://api.theboss.io/v1/coord/:coordinate_frame
-    exp_meta = get_exp_metadata(request, coll, exp)
+    if exp_meta is None:
+        exp_meta = get_exp_metadata(request, coll, exp)
     if exp_meta == 'authentication failure':
         return exp_meta
     coord_frame = exp_meta['coord_frame']

@@ -6,3 +6,4 @@
 /.dropbox
 /.vscode
 src/
+.cache/
