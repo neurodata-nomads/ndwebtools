@@ -142,9 +142,17 @@ def cutout(request, coll, exp):
         else:
             form = CutoutForm(channels=channels,
                               limits=coord_frame, res_vals=res_vals)
+
+    # merge the coord_frame data and some experiment metadata together
+    exp_data = coord_frame
+    copy_keys = ['creator', 'description', 'hierarchy_method',
+                 'num_hierarchy_levels', 'num_time_samples',
+                 'time_step', 'time_step_unit']
+    exp_data.update({key: exp_meta[key] for key in copy_keys})
+
     username = get_username(request)
     context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels,
-               'username': username, 'coord_frame': sorted(coord_frame.items())}
+               'username': username, 'exp_data': exp_data}
     return render(request, 'synaptogram/cutout.html', context)
 
 

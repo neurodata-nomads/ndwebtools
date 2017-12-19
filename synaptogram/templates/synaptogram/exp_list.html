@@ -18,6 +18,7 @@
     <li>
         <a href="{% url 'synaptogram:cutout' coll exp %}">{{exp}}</a>
         (<a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a>)
+        (<a href="https://api.boss.neurodata.io/v1/mgmt/resources/{{coll}}/{{exp}}" target="_blank">manage</a>)
     </li>
     {% endfor %}
 </ul>

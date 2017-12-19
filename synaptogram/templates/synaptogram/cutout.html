@@ -24,7 +24,7 @@
 {% include 'synaptogram/coll_link.html' %} 
 {% include 'synaptogram/exp_link.html' %}
 
-<a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a> for all channels 
+<a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a> for all channels
 
 {% if channels|length > 3 %} (all but the first 3 disabled) {% endif %} 
 
@@ -37,6 +37,7 @@
         <li>
             <a href="{% url 'synaptogram:channel_detail' coll exp ch %}">{{ch}}</a>
             (<a href="{% url 'synaptogram:ndviz_url' coll exp ch%}" target="_blank">NDViz</a>)
+            (<a href="https://api.boss.neurodata.io/v1/mgmt/resources/{{coll}}/{{exp}}/{{ch}}" target="_blank">manage</a>)
         </li>
         {% endfor %}
     </ul>
