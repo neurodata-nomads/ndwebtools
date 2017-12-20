@@ -84,7 +84,7 @@ body {
     visibility: visible;
 }
 
-#coord_frame_data{
+#exp_data{
     position: absolute;
     right:15px;
     top:120px;
@@ -92,7 +92,7 @@ body {
     z-index: -1
 }
 
-#coord_frame_data table{
+#exp_data table{
     max-width: 300px;
     width: 100%
 }
