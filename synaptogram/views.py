@@ -75,7 +75,7 @@ def cutout(request, coll, exp):
         request.session['next'] = '/'.join(('/cutout', coll, exp))
         return redirect('/openid/openid/KeyCloak')
 
-    exp_meta = get_exp_metadata(request, coll, exp)
+    exp_meta = get_exp_data(request, coll, exp)
     res_vals = list(range(exp_meta['num_hierarchy_levels']))
 
     # getting the coordinate frame limits for the experiment:
@@ -89,6 +89,8 @@ def cutout(request, coll, exp):
         # "y_stop": 1000,
         # "z_start": 0,
         # "z_stop": 500
+
+    exp_meta_keyvals = get_exp_metadata(request, coll, exp)
 
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
@@ -149,10 +151,11 @@ def cutout(request, coll, exp):
                  'num_hierarchy_levels', 'num_time_samples',
                  'time_step', 'time_step_unit']
     exp_data.update({key: exp_meta[key] for key in copy_keys})
+    exp_data.update(exp_meta_keyvals)
 
     username = get_username(request)
     context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels,
-               'username': username, 'exp_data': exp_data}
+               'username': username, 'exp_data': sorted(exp_data.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 
@@ -438,7 +441,7 @@ def get_ch_metadata(request, coll, exp, ch):
     return resp
 
 
-def get_exp_metadata(request, coll, exp):
+def get_exp_data(request, coll, exp):
     add_url = 'collection/{}/experiment/{}'.format(coll, exp)
     url, headers = get_boss_request(request, add_url)
     resp = get_resp_from_boss(request, url, headers)
@@ -447,10 +450,36 @@ def get_exp_metadata(request, coll, exp):
     return resp
 
 
+def get_exp_metadata_key(request, coll, exp, key):
+    # get metadata single key
+    add_url = 'meta/{}/{}/?key={}'.format(coll, exp, key)
+    url, headers = get_boss_request(request, add_url)
+    resp = get_resp_from_boss(request, url, headers)
+    if resp == 'authentication failure':
+        return resp  # need to handle this better
+    return resp
+
+
+def get_exp_metadata(request, coll, exp):
+    # get all the keys
+    add_url = 'meta/{}/{}'.format(coll, exp)
+    url, headers = get_boss_request(request, add_url)
+    resp = get_resp_from_boss(request, url, headers)
+    if resp == 'authentication failure':
+        return resp  # need to handle this better
+    keys = resp['keys']
+
+    metadata = {}
+    for key in keys:
+        metadata[key] = get_exp_metadata_key(request, coll, exp, key)['value']
+
+    return metadata
+
+
 def get_coordinate_frame(request, coll, exp, exp_meta=None):
     # https://api.theboss.io/v1/coord/:coordinate_frame
     if exp_meta is None:
-        exp_meta = get_exp_metadata(request, coll, exp)
+        exp_meta = get_exp_data(request, coll, exp)
     if exp_meta == 'authentication failure':
         return exp_meta
     coord_frame = exp_meta['coord_frame']
