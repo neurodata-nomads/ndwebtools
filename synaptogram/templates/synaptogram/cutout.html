@@ -11,27 +11,29 @@
     }
 </script>
 
+{% include 'synaptogram/coord_frame_detail.html' %}
 
-<p>
-    ←
-    <a href="{% url 'synaptogram:exp_list' coll %}">
-        Back
-    </a>
-</p>
+<div class="page-title">
+    <p>
+        ←
+        <a href="{% url 'synaptogram:exp_list' coll %}">
+            Back
+        </a>
+    </p>
+    
+    <h2>Experiment Detail</h2>
+</div>
 
-<h2>Experiment Detail</h2>
+<div class="exp_content">
 
 {% include 'synaptogram/coll_link.html' %} 
 {% include 'synaptogram/exp_link.html' %}
 
-<a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a> for all channels
-
-{% if channels|length > 3 %} (all but the first 3 disabled) {% endif %} 
-
-{% include 'synaptogram/coord_frame_detail.html' %}
 
 <p>
-    <span class='bold'>Channels:</span>
+    <strong>Channels</strong>
+            <a href="{% url 'synaptogram:ndviz_url' coll exp%}" target="_blank">NDViz</a>
+            {% if channels|length > 3 %} (all but the first 3 disabled) {% endif %}
     <ul>
         {% for ch in channels %}
         <li>
@@ -138,4 +140,5 @@
     <input type="submit" value="Submit" />
 </form>
 
+</div>
 {% endblock %}

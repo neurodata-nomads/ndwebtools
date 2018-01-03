@@ -14,7 +14,8 @@
             <a href="/">NDwebtools</a>
         </h1>
 
-        {% include 'synaptogram/logout_link.html' %} {% include 'synaptogram/bookmarklet_link.html' %}
+        {% include 'synaptogram/logout_link.html' %}
+        {% include 'synaptogram/bookmarklet_link.html' %}
     </div>
 
     {% if messages %}
@@ -26,17 +27,11 @@
     {% endif %}
 
     <div class="content container">
-        <div class="row">
-            <div class="col-md-8">
-                {% block content %} {% endblock %}
-            </div>
-        </div>
+        {% block content %} {% endblock %}
     </div>
 
-
     <div id='footer'>
-        <a href=https://neurodata.io/ target="_blank">Neurodata.io
-            <a>
+        <a href=https://neurodata.io/ target="_blank">Neurodata.io</a>
     </div>
 </body>
 

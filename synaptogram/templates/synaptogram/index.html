@@ -1,7 +1,7 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
-<h1>Welcome to NeuroData web tools</h1>
+<h2>Welcome to NeuroData web tools</h2>
 
 <p>
 This application provides web services for <a href="https://neurodata.io" target="_blank">NeuroData</a>
@@ -17,7 +17,7 @@ This application provides web services for <a href="https://neurodata.io" target
     </ul>
 </p>
 
-<h2>
+<h3>
 <a href="{% url 'synaptogram:coll_list' %}">
     {% if user.is_authenticated %}
         List collections
@@ -25,6 +25,6 @@ This application provides web services for <a href="https://neurodata.io" target
         Login
     {% endif %}
 </a>
-</h2>
+</h3>
 
 {% endblock %}

@@ -1,11 +1,11 @@
-<div id="exp_data">
-<span class="bold">Experiment data:</span>
-<table border="1">
-{% for key,val in exp_data %}
-    <tr>
-    <td>{{key}}</td>
-    <td>{{val}}</td>
-    </tr>
-{% endfor %}
-</table>
+<div class="exp_metadata">
+    <h6>Experiment info:</h6>
+    <table>
+        {% for key,val in exp_data %}
+        <tr>
+            <td>{{key}}</td>
+            <td class='word-break'>{{val}}</td>
+        </tr>
+        {% endfor %}
+    </table>
 </div>
