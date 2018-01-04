@@ -90,7 +90,9 @@
 }
 
 .exp_metadata {
-    float: right;
+    position: fixed;
+    top: 100 px;
+    right: 5px;
     background-color: #5884E3;
     color: #ffffff;
     max-width: 300px;
@@ -127,6 +129,7 @@ td {
     .exp_metadata {
         display: table-row-group;
         float: none;
+        position: relative;
     }
 }
 
