@@ -28,7 +28,7 @@ from .forms import CutoutForm
 # All the actual views:
 
 def index(request):
-    if request.user.is_authenticated():
+    if request.user.is_authenticated:
         username = get_username(request)
     else:
         username = ''
