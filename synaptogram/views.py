@@ -17,15 +17,19 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
+from django.contrib.auth import user_logged_in
+from django.dispatch import receiver
 
 matplotlib.use('Agg')
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+from .boss_remote import BossRemote
 from .forms import CutoutForm
 
 
 # All the actual views:
+
 
 def index(request):
     if request.user.is_authenticated:
@@ -36,15 +40,35 @@ def index(request):
     return render(request, 'synaptogram/index.html', {'username': username})
 
 
+@receiver(user_logged_in)
+def start_login_events(sender, user, request, **kwargs):
+    setup_boss_remote(request)
+    set_sess_exp(request)
+
+
+def setup_boss_remote(request):
+    # this is called when the user logs in and creates a boss remote class for the given user
+    if 'boss_remote' not in request.session:
+        request.session['boss_remote'] = BossRemote(request)
+
+
+def set_sess_exp(request):
+    # we set the session expiration to match the bearer token expiration
+    id_token = request.session.get('id_token')
+    epoch_time_KC = id_token['exp']
+    epoch_time_loc = round(time.time())  # + time.timezone
+    new_exp_time = epoch_time_KC - epoch_time_loc
+    if new_exp_time < 0:  # this really shouldn't happen because we expire sessions now
+        return 'expire time in past'
+    else:
+        request.session.set_expiry(new_exp_time)
+        return 0
+
+
 @login_required
 def coll_list(request):
-    add_url = 'collection/'
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    request.session['next'] = 'synaptogram:coll_list'
-    if resp == 'authentication failure':
-        return redirect('/openid/openid/KeyCloak')
-    collections = sorted(resp['collections'], key=str.lower)
+    collections = request.session['boss_remote'].get_collections()
+
     username = get_username(request)
     context = {'collections': collections, 'username': username}
     return render(request, 'synaptogram/coll_list.html', context)
@@ -52,13 +76,11 @@ def coll_list(request):
 
 @login_required
 def exp_list(request, coll):
-    add_url = 'collection/{}/experiment/'.format(coll)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    request.session['next'] = '/exp_list/' + coll
-    if resp == 'authentication failure':
-        return redirect('/openid/openid/KeyCloak')
-    experiments = sorted(resp['experiments'], key=str.lower)
+    experiments = request.session['boss_remote'].get_experiments(coll)
+    if experiments is None:
+        messages.error(
+            request, 'No experiments found for collection: {}'.format(coll))
+        return redirect(reverse('synaptogram:coll_list'))
 
     username = get_username(request)
     context = {'coll': coll, 'experiments': experiments, 'username': username}
@@ -67,30 +89,37 @@ def exp_list(request, coll):
 
 @login_required
 def cutout(request, coll, exp):
+    boss_remote = request.session['boss_remote']
     # we need the channels to fill the form
-    channels = get_all_channels(request, coll, exp)
+    channels = boss_remote.get_channels(coll, exp)
     if channels is None:
+        messages.error(
+            request, 'No channels found for experiment: {}'.format(exp))
         return redirect(reverse('synaptogram:exp_list', args={coll}))
-    elif channels == 'authentication failure':
-        request.session['next'] = '/'.join(('/cutout', coll, exp))
-        return redirect('/openid/openid/KeyCloak')
 
-    exp_meta = get_exp_data(request, coll, exp)
-    res_vals = list(range(exp_meta['num_hierarchy_levels']))
+    exp_info = boss_remote.get_exp_info(coll, exp)
+    res_vals = list(range(exp_info['num_hierarchy_levels']))
 
     # getting the coordinate frame limits for the experiment:
-    coord_frame = get_coordinate_frame(request, coll, exp, exp_meta)
-    if coord_frame == 'authentication failure':
-        return redirect('/openid/openid/KeyCloak')
+    coord_frame = boss_remote.get_coordinate_frame(coll, exp, exp_info)
     # important stuff out of coord_frame:
-        # "x_start": 0,
-        # "x_stop": 1000,
-        # "y_start": 0,
-        # "y_stop": 1000,
-        # "z_start": 0,
-        # "z_stop": 500
+    # "x_start": 0,
+    # "x_stop": 1000,
+    # "y_start": 0,
+    # "y_stop": 1000,
+    # "z_start": 0,
+    # "z_stop": 500
 
-    exp_meta_keyvals = get_exp_metadata(request, coll, exp)
+    # actual metadata in the BOSS for the experiment
+    exp_meta_keyvals = boss_remote.get_exp_metadata(coll, exp)
+
+    # merge the coord_frame data and some experiment metadata together
+    exp_data = coord_frame
+    copy_keys = ['creator', 'description', 'hierarchy_method',
+                 'num_hierarchy_levels', 'num_time_samples',
+                 'time_step', 'time_step_unit']
+    exp_data.update({key: exp_info[key] for key in copy_keys})
+    exp_data.update(exp_meta_keyvals)
 
     # if this is a POST request we need to process the form data
     if request.method == 'POST':
@@ -145,14 +174,6 @@ def cutout(request, coll, exp):
             form = CutoutForm(channels=channels,
                               limits=coord_frame, res_vals=res_vals)
 
-    # merge the coord_frame data and some experiment metadata together
-    exp_data = coord_frame
-    copy_keys = ['creator', 'description', 'hierarchy_method',
-                 'num_hierarchy_levels', 'num_time_samples',
-                 'time_step', 'time_step_unit']
-    exp_data.update({key: exp_meta[key] for key in copy_keys})
-    exp_data.update(exp_meta_keyvals)
-
     username = get_username(request)
     context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels,
                'username': username, 'exp_data': sorted(exp_data.items())}
@@ -160,27 +181,28 @@ def cutout(request, coll, exp):
 
 
 @login_required
-def ndviz_url(request, coll, exp, channel):
+def get_ndviz_url(request, coll, exp, channel):
     # this generates an ndviz url for the channel/experiment/collection as inputs
-    base_url, _ = get_boss_request(request)
+    boss_remote = request.session['boss_remote']
+
     if channel is None:
-        channels = get_all_channels(request, coll, exp)
+        channels = boss_remote.get_channels(coll, exp)
     else:
         channels = [channel]
-    url, _ = ret_ndviz_urls(request, base_url, coll, exp, channels)
+    url, _ = ret_ndviz_urls(request, coll, exp, channels)
     return redirect(url[0])
 
 
 @login_required
 def ndviz_url_list(request):
+    boss_remote = request.session['boss_remote']
     q = request.GET
     coll, exp, x, y, z, channels = process_params(q)
-    base_url, _ = get_boss_request(request, '')
 
-    coord_frame = get_coordinate_frame(request, coll, exp)
+    coord_frame = boss_remote.get_coordinate_frame(coll, exp)
     voxel_sizes = get_voxel_size(coord_frame)
     urls, z_vals = ret_ndviz_urls(
-        request, base_url, coll, exp, channels, x, y, z, voxel_sizes)
+        request, coll, exp, channels, x, y, z, voxel_sizes)
 
     x_int = list(map(int, x.split(':')))
 
@@ -218,8 +240,6 @@ def tiff_stack(request):
 def tiff_stack_channel(request, coll, exp, x, y, z, channel, res):
     img_data, cut_url = get_chan_img_data(
         request, coll, exp, channel, x, y, z, res)
-    if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
-        return redirect(reverse('synaptogram:cutout', args=(coll, exp)))
     obj = BytesIO()
     tiff.imsave(obj, img_data, metadata={'cut_url': cut_url})
 
@@ -278,11 +298,6 @@ def sgram_from_ndviz(request):
     url = request.GET.get('url')
     coll, exp = parse_ndviz_url(request, url)
 
-    if coll == 'incorrect source':
-        return redirect('synaptogram:coll_list')
-    elif coll == 'authentication failure':
-        return redirect('/openid/openid/KeyCloak')
-
     x = ':'.join(request.GET.get('xextent').split(','))
     y = ':'.join(request.GET.get('yextent').split(','))
     coords = request.GET.get('coords').split(',')
@@ -301,205 +316,36 @@ def sgram_from_ndviz(request):
 
 @login_required
 def channel_detail(request, coll, exp, channel):
-    add_url = '/'.join(('collection', coll, 'experiment',
-                        exp, 'channel', channel))
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    request.session['next'] = '/exp_list/' + coll
-    if resp == 'authentication failure':
-        return redirect('/openid/openid/KeyCloak')
-    ch_props = resp
+    boss_remote = request.session['boss_remote']
+    ch_info = boss_remote.get_ch_info(coll, exp, channel)
+    ch_perms = boss_remote.get_permissions(coll, exp, channel)
+    perm_sets = ch_perms['permission-sets']
 
-    add_url = 'permissions/?' + '&'.join(
-        ('collection={}'.format(coll),
-         'experiment={}'.format(exp),
-         'channel={}'.format(channel)))
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    request.session['next'] = '/exp_list/' + coll
-    if resp == 'authentication failure':
-        return redirect('/openid/openid/KeyCloak')
-    permissions = resp
-    perm_sets = permissions['permission-sets']
-
-    base_url = get_boss_request(request)
-    ndviz_url, _ = ret_ndviz_urls(request, base_url, coll, exp, [channel])
+    ndviz_url, _ = ret_ndviz_urls(request, coll, exp, [channel])
 
     return render(request, 'synaptogram/channel_detail.html',
-                  {'coll': coll, 'exp': exp, 'channel': channel, 'channel_props': ch_props, 'permissions': perm_sets,
+                  {'coll': coll, 'exp': exp, 'channel': channel, 'channel_props': ch_info, 'permissions': perm_sets,
                    'ndviz_url': ndviz_url[0]})
 
 
 @login_required
 def start_downsample(request, coll, exp, channel):
-    add_url = '/'.join(('downsample', coll, exp, channel))
-    url, headers = get_boss_request(request, add_url)
-    S = get_boss_session(request)
-    r = S.post(url, headers=headers)
-    if r.status_code != 201:
-        print("Error: Request failed!")
-        print("Received {} from server.".format(r.status_code))
-    else:
-        print("Downsample request sent for {}".format(url))
+    boss_remote = request.session['boss_remote']
+    boss_remote.start_downsample(coll, exp, channel)
     return HttpResponseRedirect(
         reverse('synaptogram:channel_detail', args=(coll, exp, channel)))
 
 
 @login_required
 def stop_downsample(request, coll, exp, channel):
-    add_url = '/'.join(('downsample', coll, exp, channel))
-    url, headers = get_boss_request(request, add_url)
-    S = get_boss_session(request)
-    r = S.delete(url, headers=headers)
-    if r.status_code != 204:  # 409 is the error if res. not found
-        print("Error: Request failed!")
-        print("Received {} from server.".format(r.status_code))
-        # add messages.error
-    else:
-        print("Downsample delete request sent for {}".format(url))
+    boss_remote = request.session['boss_remote']
+    boss_remote.stop_downsample(coll, exp, channel)
     return HttpResponseRedirect(
         reverse('synaptogram:channel_detail', args=(coll, exp, channel)))
 
 
-def set_sess_exp(request):
-    id_token = request.session.get('id_token')
-    epoch_time_KC = id_token['exp']
-    epoch_time_loc = round(time.time())  # + time.timezone
-    new_exp_time = epoch_time_KC - epoch_time_loc
-    if new_exp_time < 0:  # this really shouldn't happen because we expire sessions now
-        return 'expire time in past'
-    else:
-        request.session.set_expiry(new_exp_time)
-        return 0
-
-
 def get_username(request):
     return request.session.get('userinfo')['name']
-
-
-# All the interaction with the Boss:
-
-def get_boss_request(request, add_url=''):
-    api_key = request.session.get('access_token')
-    # api key should always be present because we should be calling
-    # get_boss_request from views with @login_required
-    boss_url = 'https://api.boss.neurodata.io/v1/'
-    headers = {'Authorization': 'Bearer {}'.format(api_key)}
-    url = boss_url + add_url
-    return url, headers
-
-
-def get_boss_session(request):
-    if 'boss_sess' not in request.session:
-        request.session['boss_sess'] = requests.Session()
-        request.session['boss_sess'].stream = False
-    return request.session['boss_sess']
-
-
-def get_resp_from_boss(request, url, headers):
-    S = get_boss_session(request)
-    r = S.get(url, headers=headers)
-    if r.status_code == 500:
-        messages.error(request, 'server error')
-        return 'server error'
-    try:
-        resp = r.json()
-        if ('detail' in resp and resp['detail'] == 'Invalid Authorization header. Unable to verify bearer token') \
-                or set_sess_exp(request) == 'expire time in past':
-            return 'authentication failure'  # no message - we just redirecto to keycloak
-        elif 'message' in resp and 'Incorrect cutout arguments' in resp['message']:
-            messages.error(request, resp['message'])
-            return 'incorrect cutout arguments'
-        return resp
-    except ValueError:
-        # must be blosc data - return it
-        return r
-
-
-def get_all_channels(request, coll, exp):
-    add_url = 'collection/{}/experiment/{}/channels/'.format(coll, exp)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    if resp == 'authentication failure':
-        return resp  # need to handle this better
-    elif resp['channels'] == []:
-        messages.error(
-            request,
-            'No channels found for experiment: {}'.format(exp))
-        return None
-    else:
-        channels = tuple(resp['channels'])
-    return channels
-
-
-def get_ch_metadata(request, coll, exp, ch):
-    add_url = 'collection/{}/experiment/{}/channel/{}'.format(coll, exp, ch)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    if resp == 'authentication failure':
-        return resp  # need to handle this better
-    return resp
-
-
-def get_exp_data(request, coll, exp):
-    add_url = 'collection/{}/experiment/{}'.format(coll, exp)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    if resp == 'authentication failure':
-        return resp  # need to handle this better
-    return resp
-
-
-def get_exp_metadata_key(request, coll, exp, key):
-    # get metadata single key
-    add_url = 'meta/{}/{}/?key={}'.format(coll, exp, key)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    if resp == 'authentication failure':
-        return resp  # need to handle this better
-    return resp
-
-
-def get_exp_metadata(request, coll, exp):
-    # get all the keys
-    add_url = 'meta/{}/{}'.format(coll, exp)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    if resp == 'authentication failure':
-        return resp  # need to handle this better
-    keys = resp['keys']
-
-    metadata = {}
-    for key in keys:
-        metadata[key] = get_exp_metadata_key(request, coll, exp, key)['value']
-
-    return metadata
-
-
-def get_coordinate_frame(request, coll, exp, exp_meta=None):
-    # https://api.theboss.io/v1/coord/:coordinate_frame
-    if exp_meta is None:
-        exp_meta = get_exp_data(request, coll, exp)
-    if exp_meta == 'authentication failure':
-        return exp_meta
-    coord_frame = exp_meta['coord_frame']
-    add_url = 'coord/{}'.format(coord_frame)
-    url, headers = get_boss_request(request, add_url)
-    resp = get_resp_from_boss(request, url, headers)
-    if resp == 'authentication failure':
-        return resp  # need to handle this better
-    # check that it contains these data otherwise raise exception:
-    # "x_start": 0,
-    # "x_stop": 1000,
-    # "y_start": 0,
-    # "y_stop": 1000,
-    # "z_start": 0,
-    # "z_stop": 500,
-    # "x_voxel_size": 1.0,
-    # "y_voxel_size": 1.0,
-    # "z_voxel_size": 1.0,
-    # "voxel_unit": "nanometers",
-    return resp
 
 
 # helper functions which process data from the Boss or don't interact with
@@ -520,22 +366,27 @@ def adjust_downsample(res, xy):
 # gets stuff from the boss
 
 
+def ret_cut_urls(coll, exp, x, y, z, channels, res):
+    cut_urls = []
+    for ch in channels:
+        JJ = '/'.join(('cutout', coll, exp, ch, str(res), x, y, z))
+        cut_urls.append(JJ)
+    return cut_urls
+
+
 def get_chan_img_data(request, coll, exp, channel, x, y, z, res):
-    base_url, headers = get_boss_request(request)
-    headers_blosc = headers
-    headers_blosc['Content-Type'] = 'application/blosc-python'
+    boss_remote = request.session['boss_remote']
+
     res = int(res)
     x, y = adjust_downsample(res, [x, y])
 
-    cut_url = ret_cut_urls(request, base_url, coll, exp,
-                           x, y, z, [channel], res)[0]
-    r = get_resp_from_boss(request, cut_url, headers_blosc)
-    if r == 'authentication failure' or r == 'incorrect cutout arguments' or r == 'server error':
-        return r, cut_url
+    cut_url = ret_cut_urls(coll, exp, x, y, z, [channel], res)[0]
+    r = boss_remote.get(cut_url, {'Accept': 'application/blosc'})
+
     data_decomp = blosc.decompress(r.content)
 
-    ch_metadata = get_ch_metadata(request, coll, exp, channel)
-    ch_datatype = ch_metadata['datatype']
+    ch_info = boss_remote.get_ch_info(coll, exp, channel)
+    ch_datatype = ch_info['datatype']
     data_mat = np.fromstring(data_decomp, dtype=ch_datatype)
 
     x_rng, y_rng, z_rng = create_voxel_rng(x, y, z)
@@ -583,14 +434,15 @@ def ret_ndviz_channel_part(boss_url, ch_metadata, coll, exp, ch, ch_indx=0):
     return ch_link
 
 
-def ret_ndviz_urls(request, base_url, coll, exp,
+def ret_ndviz_urls(request, coll, exp,
                    channels, x=None, y=None, z=None, voxel_sizes=None):
     # https://viz-dev.boss.neurodata.io/#!%7B%27layers%27:%7B%27synapsinR_7thA%27:%7B%27type%27:%27image%27_%27source%27:%27boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000%27%7D%7D_%27navigation%27:%7B%27pose%27:%7B%27position%27:%7B%27voxelSize%27:[100_100_70]_%27voxelCoordinates%27:[583.1588134765625_5237.650390625_18.5]%7D%7D_%27zoomFactor%27:15.304857247764861%7D%7D
     # unescaped by: http://www.utilities-online.info/urlencode/
     # https://viz-dev.boss.neurodata.io/#!{'layers':{'synapsinR_7thA':{'type':'image'_'source':'boss://https://api.boss.neurodata.io/kristina15/image/synapsinR_7thA?window=0,10000'}}_'navigation':{'pose':{'position':{'voxelSize':[100_100_70]_'voxelCoordinates':[583.1588134765625_5237.650390625_18.5]}}_'zoomFactor':15.304857247764861}}
     ndviz_base = 'https://viz.boss.neurodata.io/'
     boss_url = 'https://api.boss.neurodata.io/'
-    # error check
+
+    boss_remote = request.session['boss_remote']
 
     if z is not None:
         z_rng = list(map(int, z.split(':')))
@@ -600,14 +452,14 @@ def ret_ndviz_urls(request, base_url, coll, exp,
     ndviz_urls = []
     z_vals = []
 
-    for z_val in range(z_rng[0], z_rng[1]):
-        ch_viz_links = []
-        for ch_indx, ch in enumerate(channels):
-            ch_metadata = get_ch_metadata(request, coll, exp, ch)
-            ch_link = ret_ndviz_channel_part(
-                boss_url, ch_metadata, coll, exp, ch, ch_indx)
-            ch_viz_links.append(ch_link)
+    ch_viz_links = []
+    for ch_indx, ch in enumerate(channels):
+        ch_info = boss_remote.get_ch_info(coll, exp, ch)
+        ch_link = ret_ndviz_channel_part(
+            boss_url, ch_info, coll, exp, ch, ch_indx)
+        ch_viz_links.append(ch_link)
 
+    for z_val in range(z_rng[0], z_rng[1]):
         joined_ndviz_url = ''.join(
             (ndviz_base, '#!{\'layers\':{', '_'.join(ch_viz_links), '}'))
 
@@ -627,19 +479,6 @@ def ret_ndviz_urls(request, base_url, coll, exp,
         ndviz_urls.append(joined_ndviz_url)
         z_vals.append(str(z_val))
     return ndviz_urls, z_vals
-
-
-def ret_cut_urls(request, base_url, coll, exp, x, y, z, channels, res):
-    cut_urls = []
-    for ch in channels:
-        JJ = '/'.join(('cutout', coll, exp, ch, str(res), x, y, z))
-        ch_metadata = get_ch_metadata(request, coll, exp, ch)
-        if ch_metadata['datatype'] == 'uint16':
-            window = '?window=0,10000'
-        else:
-            window = ''
-        cut_urls.append(base_url + JJ + '/' + window)
-    return cut_urls
 
 
 def error_check_int_param(vals):
@@ -686,8 +525,6 @@ def create_voxel_rng(x, y, z):
 
 
 def plot_sgram(request, coll, exp, x, y, z, channels):
-    base_url, headers = get_boss_request(request)
-
     num_ch = len(channels)
 
     fig = Figure(figsize=(10, 25), dpi=150, facecolor='w', edgecolor='k')
