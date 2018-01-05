@@ -15,20 +15,21 @@
 
 <div class="page-title">
     <p>
-        ←
+        ↑
+        <a href="{% url 'synaptogram:coll_list' %}">
+            Collections</a>
+        | 
         <a href="{% url 'synaptogram:exp_list' coll %}">
-            Back
-        </a>
+            Experiments</a>
     </p>
     
-    <h2>Experiment Detail</h2>
+    <h3>Experiment Detail</h3>
 </div>
 
 <div class="exp_content">
 
 {% include 'synaptogram/coll_link.html' %} 
 {% include 'synaptogram/exp_link.html' %}
-
 
 <p>
     <strong>Channels</strong>
@@ -45,7 +46,7 @@
     </ul>
 </p>
 
-<h3>Cutout:</h3>
+<h4>Cutout:</h4>
 
 <form action="{% url 'synaptogram:cutout' coll exp %}" method="post">
     {% csrf_token %}

@@ -1,30 +1,27 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
-<h2>Welcome to NeuroData web tools</h2>
+<h3>NeuroData web tools</h3>
 
 <p>
-This application provides web services for <a href="https://neurodata.io" target="_blank">NeuroData</a>
+Providing web services for <a href="https://neurodata.io" target="_blank">NeuroData</a>
 </p>
 
-<p>Current features:
+<h4>Features:</h4>
     <ul>
-        <li>TIFF image cutouts for imaging data</li>
-        <li>links to <a href="https://viz.boss.neurodata.io/" target="_blank">NeuroDataViz</a> specific to data resources</li>
-        <li>bookmarklet to navigate from NeuroDataViz to the image cutout form</li>
-        <li>integration with NeuroData's data ingest</li>
-        <li>exploratory data analysis/visualization</li>
+        <li>TIFF image cutouts</li>
+        <li>Links to <a href="https://viz.boss.neurodata.io/" target="_blank">NeuroDataViz</a></li>
+        <li>Bookmarklet to navigate from NeuroDataViz to the image cutout form</li>
+        <li>Integration with NeuroData's data ingest</li>
+        <li>Exploratory data analysis/visualization</li>
     </ul>
-</p>
 
-<h3>
-<a href="{% url 'synaptogram:coll_list' %}">
+<a class="button" href="{% url 'synaptogram:coll_list' %}">
     {% if user.is_authenticated %}
         List collections
     {% else %}
         Login
     {% endif %}
 </a>
-</h3>
 
 {% endblock %}

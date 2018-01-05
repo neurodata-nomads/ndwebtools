@@ -1,21 +1,23 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
-<h2>URLs to download image volumes</h2>
+{% include 'synaptogram/back_to_form.html' %}
 
-<h4>These stacked TIFF images can be viewed using <a href="https://imagej.nih.gov/ij/index.html" target="_blank">imageJ</a> using the <a href="https://www.openmicroscopy.org/site/support/bio-formats5.5/users/imagej/" target="_blank">Bioformats</a> plugin.</h4>
+<h3>Links to image volumes</h3>
 
-Download
-<a href="{% url 'synaptogram:zip_tiff_stacks' coll exp x y z channels res %}"> all channels</a>
+<h4>Download and view in <a href="https://imagej.nih.gov/ij/index.html" target="_blank">imageJ</a>
+    using <a href="https://www.openmicroscopy.org/site/support/bio-formats5.5/users/imagej/" target="_blank">Bioformats</a> plugin.</h4>
+
+<p>Download
+<a href="{% url 'synaptogram:zip_tiff_stacks' coll exp x y z channels res %}"> channels</a>
 combined (zip compressed).  Note: can take a while.
+</p>
 
-<p>Or by channel:
+<p>Or separately by channel:
 {% for u in urls %}
 <ul>
     <li><a href={{u}}>{{u}}</a></li>
 </ul>
 {% endfor %}
-
-{% include 'synaptogram/back_to_form.html' %}
 
 {% endblock %}

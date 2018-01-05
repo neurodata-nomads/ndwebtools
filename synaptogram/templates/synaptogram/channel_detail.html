@@ -1,8 +1,19 @@
 {% extends 'synaptogram/base.html' %}
 {% block content %}
 
+<p>
+    ↑
+    <a href="{% url 'synaptogram:coll_list' %}">
+        Collections</a>
+    | 
+    <a href="{% url 'synaptogram:exp_list' coll %}">
+        Experiments</a>
+    | 
+    <a href="{% url 'synaptogram:cutout' coll exp %}">
+        Channels</a>
+</p>
 
-<h2>Channel detail</h2>
+<h3>Channel detail</h3>
 
 {% include 'synaptogram/coll_link.html' %}
 {% include 'synaptogram/exp_link.html' %}

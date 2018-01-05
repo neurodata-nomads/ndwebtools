@@ -5,7 +5,9 @@
 <script type="text/javascript" src="{% static 'ndviz_zoomfactor.js' %}">
 </script>
 
-<h2>Neurodata Viz URLs</h2>
+{% include 'synaptogram/back_to_form.html' %}
+
+<h3>Neurodata Viz URLs</h3>
 
 {% for z,cu in channel_ndviz_list %}
 <ul>
@@ -22,7 +24,5 @@
     </li>
 </ul>
 {% endfor %}
-
-{% include 'synaptogram/back_to_form.html' %}
 
 {% endblock %}
