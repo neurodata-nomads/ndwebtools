@@ -20,4 +20,5 @@ urlpatterns = [
     url(r'', include('synaptogram.urls')),
     url(r'^admin/', admin.site.urls),
     url(r'openid/', include('djangooidc.urls')),
+    url('ingest/', include('ingest.urls')),
 ]

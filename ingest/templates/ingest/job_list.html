@@ -1,0 +1,9 @@
+{% for job in jobs %}
+    <p>
+    <ul>
+    {% for key, value in job.items %}
+        <li>{{key}}: {{value}}</li>
+    {% endfor %}
+    </ul>
+    </p>
+{% endfor %}
