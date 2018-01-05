@@ -11,7 +11,7 @@ BOSS_VERSION = "v1"
 
 class BossRemote:
 
-    def __init__(self, request):
+    def __init__(self, request, auth_type='Bearer'):
         self.boss_url = BOSS_URL
         if self.boss_url[-1] != '/':
             self.boss_url += '/'
@@ -20,6 +20,8 @@ class BossRemote:
         token = request.session.get('access_token')  # Bearer token
         self.token = token
         self.session = requests.Session()
+
+        self.auth_type = auth_type
 
     def get(self, url, input_headers={}):
         # all get requests should come through here
@@ -31,7 +33,7 @@ class BossRemote:
             headers = input_headers
         else:
             headers = {}
-        headers['Authorization'] = 'Bearer {}'.format(self.token)
+        headers['Authorization'] = '{} {}'.format(self.auth_type, self.token)
         r = self.session.get("{}{}".format(
             self.boss_url, url), headers=headers)
         r.raise_for_status()
@@ -45,7 +47,7 @@ class BossRemote:
             headers = input_headers
         else:
             headers = {}
-        headers['Authorization'] = 'Bearer {}'.format(self.token)
+        headers['Authorization'] = '{} {}'.format(self.auth_type, self.token)
         r = self.session.post("{}{}".format(
             self.boss_url, url), data=data, headers=headers)
         r.raise_for_status()
@@ -58,7 +60,7 @@ class BossRemote:
             headers = input_headers
         else:
             headers = {}
-        headers['Authorization'] = 'Bearer {}'.format(self.token)
+        headers['Authorization'] = '{} {}'.format(self.auth_type, self.token)
         r = self.session.delete("{}{}".format(
             self.boss_url, url), headers=headers)
         r.raise_for_status()
