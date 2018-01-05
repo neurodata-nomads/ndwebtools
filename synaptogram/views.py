@@ -32,12 +32,8 @@ from .forms import CutoutForm
 
 
 def index(request):
-    if request.user.is_authenticated:
-        username = get_username(request)
-    else:
-        username = ''
     request.session['next'] = 'synaptogram:coll_list'
-    return render(request, 'synaptogram/index.html', {'username': username})
+    return render(request, 'synaptogram/index.html')
 
 
 @receiver(user_logged_in)
@@ -69,8 +65,7 @@ def set_sess_exp(request):
 def coll_list(request):
     collections = request.session['boss_remote'].get_collections()
 
-    username = get_username(request)
-    context = {'collections': collections, 'username': username}
+    context = {'collections': collections}
     return render(request, 'synaptogram/coll_list.html', context)
 
 
@@ -82,8 +77,7 @@ def exp_list(request, coll):
             request, 'No experiments found for collection: {}'.format(coll))
         return redirect(reverse('synaptogram:coll_list'))
 
-    username = get_username(request)
-    context = {'coll': coll, 'experiments': experiments, 'username': username}
+    context = {'coll': coll, 'experiments': experiments}
     return render(request, 'synaptogram/exp_list.html', context)
 
 
@@ -174,9 +168,8 @@ def cutout(request, coll, exp):
             form = CutoutForm(channels=channels,
                               limits=coord_frame, res_vals=res_vals)
 
-    username = get_username(request)
     context = {'form': form, 'coll': coll, 'exp': exp, 'channels': channels,
-               'username': username, 'exp_data': sorted(exp_data.items())}
+               'exp_data': sorted(exp_data.items())}
     return render(request, 'synaptogram/cutout.html', context)
 
 
@@ -342,10 +335,6 @@ def stop_downsample(request, coll, exp, channel):
     boss_remote.stop_downsample(coll, exp, channel)
     return HttpResponseRedirect(
         reverse('synaptogram:channel_detail', args=(coll, exp, channel)))
-
-
-def get_username(request):
-    return request.session.get('userinfo')['name']
 
 
 # helper functions which process data from the Boss or don't interact with

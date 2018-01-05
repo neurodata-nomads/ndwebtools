@@ -1,6 +1,6 @@
 <div id="username">
     {% if user.is_authenticated %}
-        {{username}}
+        {{user.get_full_name}}
         <a class='button' href="/openid/logout">Logout</a>
     {% else %}
         Not logged in.
