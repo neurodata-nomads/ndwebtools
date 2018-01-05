@@ -54,11 +54,7 @@ def set_sess_exp(request):
     epoch_time_KC = id_token['exp']
     epoch_time_loc = round(time.time())  # + time.timezone
     new_exp_time = epoch_time_KC - epoch_time_loc
-    if new_exp_time < 0:  # this really shouldn't happen because we expire sessions now
-        return 'expire time in past'
-    else:
-        request.session.set_expiry(new_exp_time)
-        return 0
+    request.session.set_expiry(new_exp_time)
 
 
 @login_required
