@@ -51,10 +51,11 @@ def setup_boss_remote(request):
 def set_sess_exp(request):
     # we set the session expiration to match the bearer token expiration
     id_token = request.session.get('id_token')
-    epoch_time_KC = id_token['exp']
-    epoch_time_loc = round(time.time())  # + time.timezone
-    new_exp_time = epoch_time_KC - epoch_time_loc
-    request.session.set_expiry(new_exp_time)
+    if id_token is not None:  # if admin interfact we aren't using KeyCloak
+        epoch_time_KC = id_token['exp']
+        epoch_time_loc = round(time.time())  # + time.timezone
+        new_exp_time = epoch_time_KC - epoch_time_loc
+        request.session.set_expiry(new_exp_time)
 
 
 @login_required
