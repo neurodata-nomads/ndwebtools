@@ -17,14 +17,15 @@ def list_jobs(request):
     return render(request, 'ingest/job_list.html', context)
 
 
-def ingest_job_start(request):
+def ingest_job_start(request, data):
     # takes command arguments POSTed from ingest_large_vol
-    # and creates the IngestJob entry in the database
+    # unpickles them
+    # creates the IngestJob entry in the database
     pass
 
 
-def ingest_job_update(request):
-    # when ingest_large_vol completes a portion of the ingest, it can update the
+def ingest_job_update(request, data):
+    # when ingest_large_vol completes a portion of an ingest, it updates the
     # entry here by posting it's progress
     pass
 
