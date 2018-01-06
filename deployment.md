@@ -1,9 +1,9 @@
 # Notes on deployment
 
-## Install ndwebtools
+## Install ndwebtools (linux)
 - Create a virtual environment (python 3)
-    - `virtualenv uwsgi-ndwebtools -p /usr/bin/python3`
-- Clone ndwebtools into the virtual environment path
+    - `virtualenv ndwebtools_env -p /usr/bin/python3`
+- Clone ndwebtools into virtual environment path
 - Install requirements of ndwebtools
     - `pip install -r requirements.txt`
 - create `local_settings.py` file inside mysite/ with the following values:
@@ -13,10 +13,11 @@
     - auth_uri
     - cliend_id
     - public_uri
+- `python manage.py makemigrations bossoidc`
 - `python manage.py migrate`
 
 ### Test to see if site works
-- `python manage.py runserver 0:8001`
+- `python manage.py runserver 0:8080`
 
 ## Server deployment
 ### Many of these are from the [tutorial](https://uwsgi-docs.readthedocs.io/en/latest/tutorials/Django_and_nginx.html) for setting up uWSGI with Django (and nginx)
@@ -32,7 +33,7 @@
     # the upstream component nginx needs to connect to
     upstream django {
         server unix:///home/ubuntu/uwsgi-ndwebtools/ndwebtools/mysite.sock; # for a file socket
-        # server 127.0.0.1:8001; # for a web port socket
+        # server 127.0.0.1:8080; # for a web port socket
     }
 
     # configuration of the server
@@ -63,7 +64,6 @@
     }
 
     server {
-        listen       8001;
         listen       80;
         server_name  ben-dev.neurodata.io ndwt.neurodata.io;
 
@@ -127,7 +127,7 @@
 - `sudo systemctl enable nginx`
 
 ### Logs
-- uwsgi:
+- uwsgi
     - `/var/log/uwsgi/app/mysite_uwsgi.log`
 - nginx
     - `/var/log/nginx/access.log`

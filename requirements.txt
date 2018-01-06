@@ -1,6 +1,6 @@
 Django>=2.0.1
 requests>=2.18.4
-matplotlib>=2.1.0
+matplotlib>=2.1.1
 numpy>=1.13.3
 blosc>=1.5.1
 tifffile>=0.12.1
