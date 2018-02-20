@@ -31,6 +31,7 @@ from .forms import CutoutForm, AvatrPullForm, AvatrPushForm
 import sys
 sys.path.append('synaptogram/')
 from NDResource import NeuroDataResource
+from block_compute import block_compute
 import configparser
 
 # All the actual views:
@@ -95,6 +96,24 @@ def avatr_push(request, file_img, file_meta):
     config = configparser.ConfigParser()
     config.read(file_meta)
     return str(config['collection'])
+    COLL_NAME = 'collman'
+    EXP_NAME = 'M247514_Rorb_1_Site3Align2_EM'
+    CHAN_NAME = 'm247514_Site3Annotation_MN_global'
+    chan_setup = ChannelResource(CHAN_NAME, COLL_NAME, EXP_NAME, 'annotation', datatype='uint64')
+    #chan = boss_remote.get_project(chan_setup)
+    chan = boss_remote.create_project(chan_setup)
+    x_rng = [0,10]
+    y_rng = [0,10]
+    z_rng = [0,10]
+    ranges = block_compute(*x_rng,*y_rng,*z_rng)
+    #how to index file_img?
+    my_array = np.array(file_img).astype(np.uint64)
+    for some_range in ranges:
+        x,y,z = some_range
+        data_cut = np.stack([np.transpose(np.array(masks[z_idx][x[0]:x[1], y[0]:y[1]], dtype='uint64')) for z_idx in range(z[0],z[1])])
+        boss_remote.create_cutout(chan, 0, x, y, z, np.ascontiguousarray(data_cut))
+		#boss_remote.create_cutout(chan, 0, x, y, z, my_array[z].reshape(-1,my_array.shape[1],my_array.shape[2]))
+    return "Successfully pushed"
 
 @login_required
 def coll_list(request):
