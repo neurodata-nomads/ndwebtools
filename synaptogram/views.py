@@ -80,6 +80,10 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
                         'experiment':exp,
                         'channel':ch,
                         'data_type':dtype,
+                        'x':x,
+                        'y':y,
+                        'z':z,
+                        'resolution':res
                         }
     with open('media/'+fn+'/'+'config.cfg', 'w') as configfile:
         config.write(configfile)
@@ -87,7 +91,10 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
 
 def avatr_push(request, file_img, file_meta):
     boss_remote = request.session['boss_remote']
-    return
+    #gen_params_from_cf
+    config = configparser.ConfigParser()
+    config.read(file_meta)
+    return str(config['collection'])
 
 @login_required
 def coll_list(request):
@@ -372,7 +379,7 @@ def channel_detail(request, coll, exp, channel):
             z = str(pull_form.cleaned_data['z_min']) + \
                 ':' + str(pull_form.cleaned_data['z_max'])
             res = pull_form.cleaned_data['res_select']
-            resp = avatr_pull(request, coll, exp, channel, x, y, z, res)
+            avatr_pull(request, coll, exp, channel, x, y, z, res)
             return HttpResponseRedirect(
                 reverse('synaptogram:channel_detail', args=(coll, exp, channel))
             )
@@ -380,7 +387,9 @@ def channel_detail(request, coll, exp, channel):
         if push_form.is_valid():
             file_img = push_form.cleaned_data['file']
             file_meta = push_form.cleaned_data['file2']
-            avatr_push(request, file_img, file_meta)
+            resp = avatr_push(request, file_img, file_meta)
+            return HttpResponse(str(resp))
+            return HttpResponse('rip')
             return HttpResponseRedirect(
                 reverse('synaptogram:channel_detail', args=(coll, exp, channel))
             )
