@@ -25,7 +25,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from .boss_remote import BossRemote
-from .forms import CutoutForm
+from .forms import CutoutForm, AvatrPullForm, AvatrPushForm
 
 
 # All the actual views:
@@ -57,6 +57,11 @@ def set_sess_exp(request):
         new_exp_time = epoch_time_KC - epoch_time_loc
         request.session.set_expiry(new_exp_time)
 
+def avatr_pull(coll, exp, channel, x, y, z, res):
+    return
+
+def avatr_push(file_img, file_meta):
+    return
 
 @login_required
 def coll_list(request):
@@ -310,12 +315,67 @@ def channel_detail(request, coll, exp, channel):
     ch_info = boss_remote.get_ch_info(coll, exp, channel)
     ch_perms = boss_remote.get_permissions(coll, exp, channel)
     perm_sets = ch_perms['permission-sets']
-
     ndviz_url, _ = ret_ndviz_urls(request, coll, exp, [channel])
+
+    #new stuff
+    exp_info = boss_remote.get_exp_info(coll, exp)
+
+    #get resolution, x_start, x_stop, ..., metadata
+    res_vals = list(range(exp_info['num_hierarchy_levels']))
+    coord_frame = boss_remote.get_coordinate_frame(coll, exp, exp_info)
+    exp_meta_keyvals = boss_remote.get_exp_metadata(coll, exp)
+
+    #merge coordinate frame data
+    exp_data = coord_frame
+    copy_keys = ['creator', 'description', 'hierarchy_method',
+                 'num_hierarchy_levels', 'num_time_samples',
+                 'time_step', 'time_step_unit']
+    exp_data.update({key: exp_info[key] for key in copy_keys})
+    exp_data.update(exp_meta_keyvals)
+
+    if request.method == 'POST':
+        pull_form = AvatrPullForm(request.POST, limits=coord_frame, res_vals=res_vals)
+        push_form = AvatrPushForm(request.POST, request.FILES)
+
+        if pull_form.is_valid():
+            # process the data in form.cleaned_data as required
+            x = str(pull_form.cleaned_data['x_min']) + \
+                ':' + str(pull_form.cleaned_data['x_max'])
+            y = str(pull_form.cleaned_data['y_min']) + \
+                ':' + str(pull_form.cleaned_data['y_max'])
+            z = str(pull_form.cleaned_data['z_min']) + \
+                ':' + str(pull_form.cleaned_data['z_max'])
+            res = pull_form.cleaned_data['res_select']
+            avatr_pull(coll, exp, channel, x, y, z, res)
+            return HttpResponseRedirect(
+                reverse('synaptogram:channel_detail', args=(coll, exp, channel))
+            )
+
+        if push_form.is_valid():
+            file_img = push_form.cleaned_data['file']
+            file_meta = push_form.cleaned_data['file2']
+            avatr_push(file_img, file_meta)
+            return HttpResponseRedirect(
+                reverse('synaptogram:channel_detail', args=(coll, exp, channel))
+            )
+    else:
+
+        q = request.GET
+        x_param = q.get('x')
+        if x_param is not None:
+            x, y, z = xyz_from_params(q)
+            x_rng, y_rng, z_rng = create_voxel_rng(x, y, z)
+            pull_form = AvatrPullForm(initial={'x_min': str(x_rng[0]), 'y_min': str(y_rng[0]), 'z_min': str(z_rng[0]),
+                                       'x_max': str(x_rng[1]), 'y_max': str(y_rng[1]), 'z_max': str(z_rng[1])},
+                              limits=coord_frame, res_vals=res_vals)
+        else:
+            pull_form = AvatrPullForm(limits=coord_frame,
+                                    res_vals=res_vals)
+        push_form = AvatrPushForm()
 
     return render(request, 'synaptogram/channel_detail.html',
                   {'coll': coll, 'exp': exp, 'channel': channel, 'channel_props': ch_info, 'permissions': perm_sets,
-                   'ndviz_url': ndviz_url[0]})
+                   'ndviz_url': ndviz_url[0], 'pull_form':pull_form, 'push_form':push_form})
 
 
 @login_required

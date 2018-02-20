@@ -45,3 +45,33 @@ class CutoutForm(forms.Form):
 
 # add validations -
 #   x_min < x_max
+
+class AvatrPullForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        limits = kwargs.pop('limits')
+        res_vals = kwargs.pop('res_vals')
+
+        super(AvatrPullForm, self).__init__(*args, **kwargs)
+        self.fields['x_min'] = forms.IntegerField(
+            label='x_min', min_value=limits['x_start'], max_value=limits['x_stop'], initial=limits['x_start'])
+        self.fields['x_max'] = forms.IntegerField(
+            label='x_max', min_value=limits['x_start'], max_value=limits['x_stop'], initial=limits['x_stop'])
+
+        self.fields['y_min'] = forms.IntegerField(
+            label='y_min', min_value=limits['y_start'], max_value=limits['y_stop'], initial=limits['y_start'])
+        self.fields['y_max'] = forms.IntegerField(
+            label='y_max', min_value=limits['y_start'], max_value=limits['y_stop'], initial=limits['y_stop'])
+
+        self.fields['z_min'] = forms.IntegerField(
+            label='z_min', min_value=limits['z_start'], max_value=limits['z_stop'], initial=0)
+        self.fields['z_max'] = forms.IntegerField(
+            label='z_max', min_value=limits['z_start'], max_value=limits['z_stop'], initial=limits['z_stop'])
+
+        self.fields['res_select'] = forms.ChoiceField(
+            label='resolution:', choices=[(c, c) for c in res_vals], widget=forms.Select())
+
+class AvatrPushForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        super(AvatrPushForm, self).__init__(*args, **kwargs)
+        self.fields['file'] = forms.FileField(label='annotated_tiff')
+        self.fields['file2'] = forms.FileField(label='metadata_file')

@@ -1,0 +1,89 @@
+{% block content %}
+<div style="width: 100%; overflow: hidden; align:center">
+    <div>
+        <h3>Boss Annotator:</h3>
+        <h5>Download Volume</h5>
+        <form action="{% url 'synaptogram:channel_detail' coll exp channel %}" method="post">
+            {% csrf_token %}
+            <table>
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ pull_form.x_min.label_tag }}</td>
+                        <td>{{ pull_form.x_min }}</td>
+                    </div>
+                </tr>
+
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ pull_form.x_max.label_tag }}</td>
+                        <td>{{ pull_form.x_max }}</td>
+                    </div>
+                </tr>
+
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ pull_form.y_min.label_tag }}</td>
+                        <td>{{ pull_form.y_min }}</td>
+                    </div>
+                </tr>
+
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ pull_form.y_max.label_tag }}</td>
+                        <td>{{ pull_form.y_max }}</td>
+                    </div>
+                </tr>
+
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ pull_form.z_min.label_tag }}</td>
+                        <td>{{ pull_form.z_min }}</td>
+                    </div>
+                </tr>
+
+                <tr>
+                    <div class="fieldWrapper">
+                        <!--{{ form.z_max.errors }}-->
+                        <td>{{ pull_form.z_max.label_tag }}</td>
+                        <td>{{ pull_form.z_max }}</td>
+                    </div>
+                </tr>
+
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ pull_form.res_select.label_tag }}</td>
+                        <td>{{ pull_form.res_select }}</td>
+                    </div>
+                </tr>
+            </table>
+            <input type='submit' value='Submit' />
+        </form>
+
+    </div>
+
+    <div style="margin-top: 100px;">
+        <!--hr-->
+        <!--h3>AVATR Push</h3-->
+        <h5>Upload Annotated Volume</h5>
+        <form enctype="multipart/form-data" action="{% url 'synaptogram:channel_detail' coll exp channel %}" method="post">
+            {% csrf_token %}
+            <table>
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ push_form.file.label_tag }}</td>
+                        <td>{{ push_form.file }}</td>
+                    </div>
+                </tr>
+                <tr>
+                    <div class="fieldWrapper">
+                        <td>{{ push_form.file2.label_tag }}</td>
+                        <td>{{ push_form.file2 }}</td>
+                    </div>
+                </tr>
+            </table>
+            <input type='submit' value='Submit' />
+        </form>
+
+    </div>
+</div>
+{% endblock %}

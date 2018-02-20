@@ -28,4 +28,8 @@ urlpatterns = [
         views.stop_downsample, name='stop_downsample'),
     url(r'^channel_detail/(?P<coll>[-\w]+)/(?P<exp>[-\w]+)/(?P<channel>[-\w]+)/$',
         views.channel_detail, name='channel_detail'),
+    url(r'^avatr_pull/$',
+        views.avatr_pull, name='avatr_pull'),
+    url(r'^avatr_push/$',
+        views.avatr_push, name='avatr_push'),
 ]
