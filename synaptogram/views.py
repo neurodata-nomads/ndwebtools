@@ -25,8 +25,13 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from .boss_remote import BossRemote
+from intern.resource.boss.resource import *
 from .forms import CutoutForm, AvatrPullForm, AvatrPushForm
 
+import sys
+sys.path.append('synaptogram/')
+from NDResource import NeuroDataResource
+import configparser
 
 # All the actual views:
 
@@ -57,10 +62,31 @@ def set_sess_exp(request):
         new_exp_time = epoch_time_KC - epoch_time_loc
         request.session.set_expiry(new_exp_time)
 
-def avatr_pull(coll, exp, channel, x, y, z, res):
+def avatr_pull(request, coll, exp, ch, x, y, z, res):
+    boss_remote = request.session['boss_remote']
+    ch_info = boss_remote.get_ch_info(coll, exp, ch)
+    dtype = ch_info['datatype']
+    img_data, cut_url = get_chan_img_data(request, coll, exp, ch, x, y, z, res)
+    fn = '{}_{}_{}_{}_{}_{}_{}_{}'.format(coll, exp, x, y, z, ch, dtype, res).replace(':', '-')
+
+    directory = os.path.dirname('media/'+fn+'/')
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    tiff.imsave('media/'+fn+'/'+'image.tif', img_data, metadata={'cut_url': cut_url})
+    config = configparser.ConfigParser()
+    config['METADATA'] = {
+                        'collection':coll,
+                        'experiment':exp,
+                        'channel':ch,
+                        'data_type':dtype,
+                        }
+    with open('media/'+fn+'/'+'config.cfg', 'w') as configfile:
+        config.write(configfile)
     return
 
-def avatr_push(file_img, file_meta):
+def avatr_push(request, file_img, file_meta):
+    boss_remote = request.session['boss_remote']
     return
 
 @login_required
@@ -346,7 +372,7 @@ def channel_detail(request, coll, exp, channel):
             z = str(pull_form.cleaned_data['z_min']) + \
                 ':' + str(pull_form.cleaned_data['z_max'])
             res = pull_form.cleaned_data['res_select']
-            avatr_pull(coll, exp, channel, x, y, z, res)
+            resp = avatr_pull(request, coll, exp, channel, x, y, z, res)
             return HttpResponseRedirect(
                 reverse('synaptogram:channel_detail', args=(coll, exp, channel))
             )
@@ -354,7 +380,7 @@ def channel_detail(request, coll, exp, channel):
         if push_form.is_valid():
             file_img = push_form.cleaned_data['file']
             file_meta = push_form.cleaned_data['file2']
-            avatr_push(file_img, file_meta)
+            avatr_push(request, file_img, file_meta)
             return HttpResponseRedirect(
                 reverse('synaptogram:channel_detail', args=(coll, exp, channel))
             )
