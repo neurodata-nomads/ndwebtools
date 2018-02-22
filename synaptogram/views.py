@@ -3,6 +3,8 @@ import re
 import time
 import zipfile
 from io import BytesIO
+from io import StringIO
+
 
 import blosc
 import matplotlib
@@ -70,44 +72,37 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
     img_data, cut_url = get_chan_img_data(request, coll, exp, ch, x, y, z, res)
     fn = '{}_{}_{}_{}_{}_{}_{}_{}'.format(coll, exp, x, y, z, ch, dtype, res).replace(':', '-')
 
-    directory = os.path.dirname('media/'+fn+'/')
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    obj = BytesIO()
+    tiff.imsave(obj, img_data, metadata={'cut_url': cut_url})
+    fname = '{}__{}__{}__{}__{}__{}__{}'.format(
+        coll, exp, x, y, z, ch, res).replace(':', '-')
 
-    tiff.imsave('media/'+fn+'/'+'image.tif', img_data, metadata={'cut_url': cut_url})
-    config = configparser.ConfigParser()
-    config['METADATA'] = {
-                        'collection':coll,
-                        'experiment':exp,
-                        'channel':ch,
-                        'data_type':dtype,
-                        'x':x,
-                        'y':y,
-                        'z':z,
-                        'resolution':res
-                        }
-    with open('media/'+fn+'/'+'config.cfg', 'w') as configfile:
-        config.write(configfile)
-    return
+    response = HttpResponse(obj.getvalue(), content_type='image/TIFF')
+    response['Content-Disposition'] = 'attachment; filename="' + fname + '.tif''"'
+    return response
 
-def avatr_push(request, file_img, file_meta):
+def avatr_push(request, file_img, channel):
     boss_remote = request.session['boss_remote']
     #gen_params_from_cf
-    config = configparser.ConfigParser()
-    config.read(file_meta)
-    return str(config['collection'])
-    COLL_NAME = 'collman'
-    EXP_NAME = 'M247514_Rorb_1_Site3Align2_EM'
-    CHAN_NAME = 'm247514_Site3Annotation_MN_global'
+    #tiff_file = file_img.read()
+    params = file_img.name.replace('-',':').split('__')
+    COLL_NAME = params[0]
+    EXP_NAME = params[1]
+    CHAN_NAME = channel
     chan_setup = ChannelResource(CHAN_NAME, COLL_NAME, EXP_NAME, 'annotation', datatype='uint64')
-    #chan = boss_remote.get_project(chan_setup)
-    chan = boss_remote.create_project(chan_setup)
-    x_rng = [0,10]
-    y_rng = [0,10]
-    z_rng = [0,10]
+    chan = boss_remote.get_project(chan_setup)#NANI
+    #chan = boss_remote.create_project(chan_setup)
+    x_rng = params[2].split(':')
+    y_rng = params[3].split(':')
+    z_rng = params[4].split(':')
+    channel_old = params[5]
+    res = params[6].split('.')[0]
     ranges = block_compute(*x_rng,*y_rng,*z_rng)
     #how to index file_img?
     my_array = np.array(file_img).astype(np.uint64)
+    print(my_array)
+    print(my_array.shape)
+    return 'hmm'
     for some_range in ranges:
         x,y,z = some_range
         data_cut = np.stack([np.transpose(np.array(masks[z_idx][x[0]:x[1], y[0]:y[1]], dtype='uint64')) for z_idx in range(z[0],z[1])])
@@ -398,16 +393,13 @@ def channel_detail(request, coll, exp, channel):
             z = str(pull_form.cleaned_data['z_min']) + \
                 ':' + str(pull_form.cleaned_data['z_max'])
             res = pull_form.cleaned_data['res_select']
-            avatr_pull(request, coll, exp, channel, x, y, z, res)
-            return HttpResponseRedirect(
-                reverse('synaptogram:channel_detail', args=(coll, exp, channel))
-            )
+            pull_response = avatr_pull(request, coll, exp, channel, x, y, z, res)
+            return pull_response
 
         if push_form.is_valid():
             file_img = push_form.cleaned_data['file']
-            file_meta = push_form.cleaned_data['file2']
-            resp = avatr_push(request, file_img, file_meta)
-            return HttpResponse(str(resp))
+            push_response = avatr_push(request, file_img, channel)
+            return HttpResponse(str(push_response))
             return HttpResponse('rip')
             return HttpResponseRedirect(
                 reverse('synaptogram:channel_detail', args=(coll, exp, channel))

@@ -74,4 +74,3 @@ class AvatrPushForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super(AvatrPushForm, self).__init__(*args, **kwargs)
         self.fields['file'] = forms.FileField(label='annotated_tiff')
-        self.fields['file2'] = forms.FileField(label='metadata_file')
