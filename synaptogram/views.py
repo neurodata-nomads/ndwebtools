@@ -69,45 +69,77 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
     boss_remote = request.session['boss_remote']
     ch_info = boss_remote.get_ch_info(coll, exp, ch)
     dtype = ch_info['datatype']
-    img_data, cut_url = get_chan_img_data(request, coll, exp, ch, x, y, z, res)
-    fn = '{}_{}_{}_{}_{}_{}_{}_{}'.format(coll, exp, x, y, z, ch, dtype, res).replace(':', '-')
 
-    obj = BytesIO()
-    tiff.imsave(obj, img_data, metadata={'cut_url': cut_url})
-    fname = '{}__{}__{}__{}__{}__{}__{}'.format(
-        coll, exp, x, y, z, ch, res).replace(':', '-')
+    fname = 'media/' + \
+        '__'.join((coll, exp, ch)) + '.zip'
 
-    response = HttpResponse(obj.getvalue(), content_type='image/TIFF')
-    response['Content-Disposition'] = 'attachment; filename="' + fname + '.tif''"'
+    with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
+        img_data, cut_url = get_chan_img_data(request, coll, exp, ch, x, y, z, res)
+        #if img_data == 'authentication failure' or img_data == 'incorrect cutout arguments':
+        #    raise Exception
+        fn = 'media/{}__{}__{}.tiff'.format(
+            coll, exp, ch).replace(':', '_')
+        tiff.imsave(fn, img_data, metadata={'cut_url': cut_url})
+        myzip.write(fn, arcname='image.tiff')
+
+        config = configparser.ConfigParser()
+        config['METADATA'] = {'collection': coll,
+                             'experiment': exp,
+                             'channel': ch,
+                             'x': x,
+                             'y': y,
+                             'z': z,
+                             'resolution': res,
+                             'dtype': dtype
+                             }
+        with open('media/metadata.cfg', 'w') as configfile:
+            config.write(configfile)
+        myzip.write('media/metadata.cfg', arcname='metadata.cfg')
+
+    response = FileResponse(open(fname, 'rb'))
+    response['Content-Disposition'] = 'attachment; filename="' + \
+        fname.strip('media/') + '"'
+
+    try:
+        os.remove(fname)
+        os.remove('media/metadata.cfg')
+        os.remove(fn)
+    except OSError:
+        print('not removed')
+        pass
+
     return response
 
-def avatr_push(request, file_img, channel):
+def avatr_push(request, file_img, file_meta, channel):
     boss_remote = request.session['boss_remote']
-    #gen_params_from_cf
-    #tiff_file = file_img.read()
-    params = file_img.name.replace('-',':').split('__')
-    COLL_NAME = params[0]
-    EXP_NAME = params[1]
-    CHAN_NAME = channel
-    chan_setup = ChannelResource(CHAN_NAME, COLL_NAME, EXP_NAME, 'annotation', datatype='uint64')
-    chan = boss_remote.get_project(chan_setup)#NANI
-    #chan = boss_remote.create_project(chan_setup)
-    x_rng = params[2].split(':')
-    y_rng = params[3].split(':')
-    z_rng = params[4].split(':')
-    channel_old = params[5]
-    res = params[6].split('.')[0]
+    #get metadata
+    meta = file_meta.read().decode('utf-8')
+    param_list = meta.split('\n')
+    params = {param.split(' = ')[0]:param.split(' = ')[1] for param in param_list[1:-2]}
+    #unpack
+    coll = params['collection']
+    ch = params['channel']
+    exp = params['experiment']
+    x_rng = params['x']
+    y_rng = params['y']
+    z_rng = params['z']
+    res = params['resolution']
+    old_dtype = params['dtype']
+
+    chan_setup = ChannelResource(ch, coll, exp, 'annotation', datatype='uint64')
+
+    #get image data
+    img = tiff.imread(file_img).astype(np.uint64)
+    print(img)
+    return(params)
+
     ranges = block_compute(*x_rng,*y_rng,*z_rng)
-    #how to index file_img?
-    my_array = np.array(file_img).astype(np.uint64)
-    print(my_array)
-    print(my_array.shape)
-    return 'hmm'
+    chan = boss_remote.get_project(chan_setup)#NANI!
+    chan = boss_remote.create_project(chan_setup)
     for some_range in ranges:
         x,y,z = some_range
-        data_cut = np.stack([np.transpose(np.array(masks[z_idx][x[0]:x[1], y[0]:y[1]], dtype='uint64')) for z_idx in range(z[0],z[1])])
+        data_cut = np.stack([np.transpose(np.array(img[z_idx][x[0]:x[1], y[0]:y[1]], dtype='uint64')) for z_idx in range(z[0],z[1])])
         boss_remote.create_cutout(chan, 0, x, y, z, np.ascontiguousarray(data_cut))
-		#boss_remote.create_cutout(chan, 0, x, y, z, my_array[z].reshape(-1,my_array.shape[1],my_array.shape[2]))
     return "Successfully pushed"
 
 @login_required
@@ -398,7 +430,8 @@ def channel_detail(request, coll, exp, channel):
 
         if push_form.is_valid():
             file_img = push_form.cleaned_data['file']
-            push_response = avatr_push(request, file_img, channel)
+            file_meta = push_form.cleaned_data['file2']
+            push_response = avatr_push(request, file_img, file_meta, channel)
             return HttpResponse(str(push_response))
             return HttpResponse('rip')
             return HttpResponseRedirect(
