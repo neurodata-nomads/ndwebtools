@@ -27,6 +27,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from .boss_remote import BossRemote
+from .block_compute import block_compute
 from intern.resource.boss.resource import *
 from .forms import CutoutForm, AvatrPullForm, AvatrPushForm
 
@@ -70,8 +71,7 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
     ch_info = boss_remote.get_ch_info(coll, exp, ch)
     dtype = ch_info['datatype']
 
-    fname = 'media/' + \
-        '__'.join((coll, exp, ch)) + '.zip'
+    fname = 'media/' + '__'.join((coll, exp, ch)) + '.zip'
 
     with zipfile.ZipFile(fname, mode='x', allowZip64=True) as myzip:
         img_data, cut_url = get_chan_img_data(request, coll, exp, ch, x, y, z, res)
@@ -79,7 +79,7 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
         #    raise Exception
         fn = 'media/{}__{}__{}.tiff'.format(
             coll, exp, ch).replace(':', '_')
-        tiff.imsave(fn, img_data, metadata={'cut_url': cut_url})
+        tiff.imsave(fn, img_data)
         myzip.write(fn, arcname='image.tiff')
 
         config = configparser.ConfigParser()
@@ -108,6 +108,7 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
         print('not removed')
         pass
 
+    print(cut_url)
     return response
 
 def avatr_push(request, file_img, file_meta, channel):
@@ -120,26 +121,37 @@ def avatr_push(request, file_img, file_meta, channel):
     coll = params['collection']
     ch = params['channel']
     exp = params['experiment']
-    x_rng = params['x']
-    y_rng = params['y']
-    z_rng = params['z']
+    x_rng = [int(i) for i in params['x'].split(':')]
+    y_rng = [int(i) for i in params['y'].split(':')]
+    z_rng = [int(i) for i in params['z'].split(':')]
     res = params['resolution']
     old_dtype = params['dtype']
 
     chan_setup = ChannelResource(ch, coll, exp, 'annotation', datatype='uint64')
-
     #get image data
     img = tiff.imread(file_img).astype(np.uint64)
-    print(img)
-    return(params)
-
+    #boss_remote.post(push_url, data=img,)
+    #return(params)
+    #return 'hi'
     ranges = block_compute(*x_rng,*y_rng,*z_rng)
-    chan = boss_remote.get_project(chan_setup)#NANI!
-    chan = boss_remote.create_project(chan_setup)
-    for some_range in ranges:
+    #chan = boss_remote.get_project(chan_setup)#NANI!
+    for some_range in ranges[0:5]:
         x,y,z = some_range
-        data_cut = np.stack([np.transpose(np.array(img[z_idx][x[0]:x[1], y[0]:y[1]], dtype='uint64')) for z_idx in range(z[0],z[1])])
-        boss_remote.create_cutout(chan, 0, x, y, z, np.ascontiguousarray(data_cut))
+        some_x = [int(i) for i in x]
+        some_y = [int(i) for i in y]
+        some_z = [int(i) for i in z]
+        some_url = '{}/{}/{}/{}/{}:{}/{}:{}/{}:{}'.format(
+            coll,exp,channel,res,x[0],x[1],y[0],y[1],z[0],z[1]
+        )
+        data_cut = np.stack(
+            [np.transpose(np.array(
+                img[z_idx][some_x[0]:some_x[1], some_y[0]:some_y[1]], dtype='uint64'
+            )) for z_idx in range(some_z[0],some_z[1])]
+        )
+        print('url: ',some_url)
+        print('cube shape: ',data_cut.shape)
+        boss_remote.post(some_url, np.ascontiguousarray(data_cut), {'Accept': 'application/blosc'})#np.ascontiguousarray(d
+        #boss_remote.create_cutout(chan, 0, x, y, z, np.ascontiguousarray(data_cut))
     return "Successfully pushed"
 
 @login_required
