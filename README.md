@@ -14,6 +14,7 @@
 - `python manage.py makemigrations bossoidc`
 - `python manage.py migrate`
 - create `neurodata.cfg` in `./synaptogram`
+    - `pip install intern` for now
 
 ### Test to see if site works
 - `python manage.py runserver 0:8080`
