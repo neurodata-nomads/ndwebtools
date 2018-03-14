@@ -65,6 +65,11 @@ class BossRemote:
             self.boss_url, url), headers=headers)
         r.raise_for_status()
 
+    def post_annotation(self, url, data):
+        post_url = url
+        print(url)
+        r = self.post(post_url, data, {'Content-Type': 'application/blosc'})
+
     def get_collections(self):
         get_url = 'collection/'
         r = self.get(get_url, {'Accept': 'application/json'})

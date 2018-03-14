@@ -28,7 +28,6 @@ from matplotlib.figure import Figure
 
 from .boss_remote import BossRemote
 from .block_compute import block_compute
-from intern.resource.boss.resource import *
 from .forms import CutoutForm, AvatrPullForm, AvatrPushForm
 
 import sys
@@ -36,6 +35,9 @@ sys.path.append('synaptogram/')
 from NDResource import NeuroDataResource
 from block_compute import block_compute
 import configparser
+
+from intern.remote.boss import BossRemote as BR
+from intern.resource.boss.resource import ChannelResource as CR#could do this manually
 
 # All the actual views:
 
@@ -113,6 +115,7 @@ def avatr_pull(request, coll, exp, ch, x, y, z, res):
 
 def avatr_push(request, file_img, file_meta, channel):
     boss_remote = request.session['boss_remote']
+    rmt = BR('./synaptogram/neurodata.cfg')
     #get metadata
     meta = file_meta.read().decode('utf-8')
     param_list = meta.split('\n')
@@ -127,32 +130,29 @@ def avatr_push(request, file_img, file_meta, channel):
     res = params['resolution']
     old_dtype = params['dtype']
 
-    chan_setup = ChannelResource(ch, coll, exp, 'annotation', datatype='uint64')
+    #chan_setup = ChannelResource(ch, coll, exp, 'annotation', datatype='uint64')
     #get image data
     img = tiff.imread(file_img).astype(np.uint64)
     #boss_remote.post(push_url, data=img,)
     #return(params)
     #return 'hi'
     ranges = block_compute(*x_rng,*y_rng,*z_rng)
-    #chan = boss_remote.get_project(chan_setup)#NANI!
-    for some_range in ranges[0:5]:
+    #chan = boss_remote.get_project(chan_setup)#NANI!o
+
+    # Create a new channel
+    chan_setup = CR(ch, coll, exp, 'annotation', datatype='uint64')
+    chan = rmt.get_project(chan_setup)
+
+    for some_range in ranges:
         x,y,z = some_range
-        some_x = [int(i) for i in x]
-        some_y = [int(i) for i in y]
-        some_z = [int(i) for i in z]
-        some_url = '{}/{}/{}/{}/{}:{}/{}:{}/{}:{}'.format(
-            coll,exp,channel,res,x[0],x[1],y[0],y[1],z[0],z[1]
-        )
-        data_cut = np.stack(
-            [np.transpose(np.array(
-                img[z_idx][some_x[0]:some_x[1], some_y[0]:some_y[1]], dtype='uint64'
-            )) for z_idx in range(some_z[0],some_z[1])]
-        )
-        print('url: ',some_url)
-        print('cube shape: ',data_cut.shape)
-        boss_remote.post(some_url, np.ascontiguousarray(data_cut), {'Accept': 'application/blosc'})#np.ascontiguousarray(d
-        #boss_remote.create_cutout(chan, 0, x, y, z, np.ascontiguousarray(data_cut))
-    return "Successfully pushed"
+        dx = [int(i-x_rng[0]) for i in x]
+        dy = [int(i-y_rng[0]) for i in y]
+        dz = [int(i-z_rng[0]) for i in z]
+        img_vol = img[dz[0]:dz[1], dy[0]:dy[1], dx[0]:dx[1]]
+        #rmt.create_cutout(chan, 0, x, y, z, np.ascontiguousarray(img_vol))#403 PERMISSIONS ERROR
+        some_url = 'cutout/{}/{}/{}/{}/{}:{}/{}:{}/{}:{}'.format(coll,exp,channel,res,x[0],x[1],y[0],y[1],z[0],z[1])
+        boss_remote.post_annotation(some_url, blosc.compress(np.ascontiguousarray(img_vol)))
+    return
 
 @login_required
 def coll_list(request):
@@ -438,14 +438,17 @@ def channel_detail(request, coll, exp, channel):
                 ':' + str(pull_form.cleaned_data['z_max'])
             res = pull_form.cleaned_data['res_select']
             pull_response = avatr_pull(request, coll, exp, channel, x, y, z, res)
+            #messages.success(request, 'Pulled')
             return pull_response
 
         if push_form.is_valid():
             file_img = push_form.cleaned_data['file']
             file_meta = push_form.cleaned_data['file2']
-            push_response = avatr_push(request, file_img, file_meta, channel)
-            return HttpResponse(str(push_response))
-            return HttpResponse('rip')
+            avatr_push(request, file_img, file_meta, channel)
+            #return render(request, 'synaptogram/channel_detail.html',
+            #              {'coll': coll, 'exp': exp, 'channel': channel, 'channel_props': ch_info, 'permissions': perm_sets,
+            #               'ndviz_url': ndviz_url[0], 'pull_form':pull_form, 'push_form':push_form})
+            messages.success(request, 'Pushed')
             return HttpResponseRedirect(
                 reverse('synaptogram:channel_detail', args=(coll, exp, channel))
             )
